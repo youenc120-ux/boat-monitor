@@ -151,6 +151,7 @@ a{color:#7fc4ff}
   </div>
 </main>
 <script>
+const BATTERY_CELLS = 2;   // 18650 × 2 串聯（要跟船端韌體的 BATTERY_CELLS 一致）
 // 1 顆鋰電池的「電壓 → 剩餘電量」對照（靜置時的大約值，船在用電時電壓會略低；低電量判定以船端韌體為準）
 const LIION_CURVE = [[4.20, 100], [4.10, 90], [4.00, 80], [3.90, 65], [3.80, 50], [3.70, 35], [3.60, 20], [3.50, 10], [3.40, 5], [3.30, 0]];
 function liionPct(v) {
@@ -482,12 +483,13 @@ function render(d, offline) {
   // --- 電池 ---
   if (d.vbat === null || d.vbat === undefined) { $('vbat').textContent = '—'; $('battBar').style.width = '0'; $('batState').textContent = '—'; }
   else {
-    const pct = liionPct(d.vbat);
-    if (d.vbat > 4.5) {
-      // 高於鋰電池滿電電壓：量測線多半接到升壓後的 5 V，這樣看不出剩多少電
+    const perCell = d.vbat / BATTERY_CELLS;
+    const pct = liionPct(perCell);
+    if (perCell > 4.5) {
+      // 高於鋰電池滿電電壓：分壓比設定錯誤，或量測線接錯位置
       $('vbat').textContent = d.vbat.toFixed(2) + ' V';
       $('battBar').style.width = '0';
-      $('batState').textContent = '⚠️ 電壓高於鋰電池滿電，量測線可能接在升壓後的 5 V，無法判斷電量';
+      $('batState').textContent = '⚠️ 電壓高於電池滿電，請檢查分壓比設定或量測線接法';
     } else {
       $('vbat').textContent = `${d.vbat.toFixed(2)} V（約 ${Math.round(pct)}%）`;
       $('battBar').style.width = pct + '%';
