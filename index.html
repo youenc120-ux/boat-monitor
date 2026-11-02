@@ -491,7 +491,7 @@ function render(d, offline) {
       $('battBar').style.width = '0';
       $('batState').textContent = '⚠️ 電壓高於電池滿電，請檢查分壓比設定或量測線接法';
     } else {
-      $('vbat').textContent = `${d.vbat.toFixed(2)} V（約 ${Math.round(pct)}%）`;
+      $('vbat').textContent = `${d.vbat.toFixed(1)} V（約 ${Math.round(pct)}%）`;
       $('battBar').style.width = pct + '%';
       $('battBar').style.background = d.lowBat ? 'var(--bad)' : pct < 30 ? 'var(--warn)' : 'var(--ok)';
       $('batState').textContent = d.lowBat ? '⚠️ 低電量，請盡快回港或充電' : '正常';
