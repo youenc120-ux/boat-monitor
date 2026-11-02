@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>漁船監控中心</title>
+<style>
+:root{--bg:#0f1720;--card:#18232f;--line:#2a3a4a;--text:#e6edf3;--muted:#8aa0b4;--ok:#2ecc71;--warn:#f39c12;--bad:#e74c3c;--info:#3498db}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;font-size:16px}
+header{position:sticky;top:0;z-index:5;background:#0b1118;border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+h1{font-size:18px;margin:0}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pill{font-size:13px;padding:3px 10px;border-radius:999px;background:var(--line);white-space:nowrap}
+.pill.ok{background:#1e5135}.pill.warn{background:#6b4a0f}.pill.bad{background:#6e1f1a}
+main{max-width:1100px;margin:0 auto;padding:12px 16px 40px}
+#offline{display:none;background:#6b4a0f;border-radius:10px;padding:10px 14px;margin-bottom:12px}
+#alarm{border-radius:14px;padding:16px;margin-bottom:12px;background:#1e5135;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+#alarm.bad{background:var(--bad);animation:blink 1s infinite}
+#alarm.warn{background:#6b4a0f}
+#alarm.grey{background:#3a4654}
+@keyframes blink{50%{background:#8e2a20}}
+#alarmTitle{font-size:26px;font-weight:700}
+#alarmSub{font-size:14px;opacity:.9;margin-top:4px}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;border:0;border-radius:10px;padding:10px 16px;background:var(--line);color:var(--text);cursor:pointer;min-height:44px}
+button.primary{background:#fff;color:#8e2a20;font-weight:700}
+button:disabled{opacity:.5;cursor:default}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.card h2{font-size:14px;color:var(--muted);margin:0 0 10px;font-weight:600}
+.big{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:14px}
+.row span:first-child{color:var(--muted)}
+.row span:last-child{font-variant-numeric:tabular-nums;text-align:right}
+.stale .big,.stale .row span:last-child,.stale svg{opacity:.45}
+.batt{height:16px;background:#0b1118;border-radius:8px;overflow:hidden;margin:8px 0}
+.batt>div{height:100%;width:0;background:var(--ok);transition:width .4s}
+#boatSvg{display:block;margin:4px auto 8px}
+canvas{width:100%;height:180px;display:block}
+.wide{grid-column:1/-1}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+td.t{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted)}
+tr.a td{color:#ff8a7a}
+#evWrap{max-height:340px;overflow:auto}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:8px}
+label{font-size:14px;color:var(--muted)}
+details summary{cursor:pointer;color:var(--muted)}
+a{color:#7fc4ff}
+@media (max-width:600px){#alarmTitle{font-size:22px}.big{font-size:24px}.btns button{flex:1}th:nth-child(3),td:nth-child(3){display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🚢 漁船監控中心</h1>
+  <div class="pills">
+    <button id="btnConnect" class="primary" style="min-height:32px;padding:4px 12px">連線藍牙</button>
+    <span class="pill" id="pGs">藍牙：未連線</span>
+    <span class="pill" id="pBoat">船端：—</span>
+    <span class="pill" id="pUpd">最後更新：—</span>
+  </div>
+</header>
+<main>
+  <div id="offline"></div>
+
+  <section id="alarm" class="grey">
+    <div>
+      <div id="alarmTitle">等待資料…</div>
+      <div id="alarmSub"></div>
+    </div>
+    <div class="btns">
+      <button id="btnMute">🔇 靜音</button>
+      <button id="btnReset" class="primary" disabled>解除警報 (Reset)</button>
+    </div>
+  </section>
+
+  <div class="grid">
+    <div class="card" id="cAtt">
+      <h2>姿態</h2>
+      <svg id="boatSvg" width="160" height="90" viewBox="-80 -45 160 90" aria-hidden="true">
+        <line x1="-78" y1="20" x2="78" y2="20" stroke="#3498db" stroke-width="2" stroke-dasharray="4 4"/>
+        <g id="hull"><path d="M-50 0 L50 0 L35 22 L-35 22 Z" fill="#8aa0b4"/><rect x="-8" y="-24" width="16" height="24" fill="#b8c7d6"/></g>
+      </svg>
+      <div class="row"><span>橫搖 Roll</span><span class="big" id="roll">—</span></div>
+      <div class="row"><span>縱搖 Pitch</span><span class="big" id="pitch">—</span></div>
+      <div class="row"><span>狀態</span><span id="attState">—</span></div>
+    </div>
+
+    <div class="card" id="cGps">
+      <h2>位置 (GPS)</h2>
+      <div class="big" id="gpsState">—</div>
+      <div class="row"><span>緯度</span><span id="lat">—</span></div>
+      <div class="row"><span>經度</span><span id="lng">—</span></div>
+      <div class="row"><span>衛星數</span><span id="sats">—</span></div>
+      <div class="row"><span>地圖</span><span id="mapLink">—</span></div>
+    </div>
+
+    <div class="card" id="cBat">
+      <h2>船端電池</h2>
+      <div class="big" id="vbat">—</div>
+      <div class="batt"><div id="battBar"></div></div>
+      <div class="row"><span>狀態</span><span id="batState">—</span></div>
+    </div>
+
+    <div class="card" id="cLink">
+      <h2>通訊品質（近 10 秒）</h2>
+      <div class="big" id="quality">—</div>
+      <div class="row"><span>丟包率</span><span id="loss">—</span></div>
+      <div class="row"><span>訊號強度 船→岸</span><span id="rssiUp">—</span></div>
+      <div class="row"><span>訊號強度 岸→船</span><span id="rssiDown">—</span></div>
+      <div class="row"><span>船端送出失敗率</span><span id="txFail">—</span></div>
+      <div class="row"><span>頻道（船端／岸上）</span><span id="chan">—</span></div>
+      <div class="row"><span>最後收到封包</span><span id="rxAge">—</span></div>
+      <div class="row"><span>藍牙更新間隔</span><span id="rtt">—</span></div>
+      <div class="row"><span>累計 收到／遺失／格式錯誤</span><span id="totals">—</span></div>
+    </div>
+
+    <div class="card wide">
+      <h2>傾斜曲線（近 3 分鐘，虛線：25° 提示、45° 翻覆）</h2>
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="card wide">
+      <div class="toolbar">
+        <h2 style="margin:0">事件紀錄</h2>
+        <div class="btns">
+          <label><input type="checkbox" id="showTrack"> 顯示航跡點</label>
+          <button id="btnCsv">匯出 CSV</button>
+        </div>
+      </div>
+      <div id="evWrap">
+        <table><thead><tr><th>時間</th><th>事件</th><th>位置</th></tr></thead><tbody id="evBody"></tbody></table>
+      </div>
+    </div>
+
+    <div class="card wide">
+      <details>
+        <summary>測試模式（只在岸上模擬，不會送到船端；5 分鐘自動結束）</summary>
+        <div class="btns" style="margin-top:10px">
+          <button data-test="sos">模擬 SOS</button>
+          <button data-test="tilt">模擬翻覆</button>
+          <button data-test="flood">模擬進水</button>
+          <button data-test="normal">清除模擬</button>
+          <button data-test="reset">結束測試模式</button>
+          <button id="btnPin">設定指令密碼</button>
+        </div>
+      </details>
+    </div>
+  </div>
+</main>
+<script>
+// 1 顆鋰電池的「電壓 → 剩餘電量」對照（靜置時的大約值，船在用電時電壓會略低；低電量判定以船端韌體為準）
+const LIION_CURVE = [[4.20, 100], [4.10, 90], [4.00, 80], [3.90, 65], [3.80, 50], [3.70, 35], [3.60, 20], [3.50, 10], [3.40, 5], [3.30, 0]];
+function liionPct(v) {
+  if (v >= LIION_CURVE[0][0]) return 100;
+  for (let i = 1; i < LIION_CURVE.length; i++) {
+    const [v1, p1] = LIION_CURVE[i - 1], [v2, p2] = LIION_CURVE[i];
+    if (v >= v2) return p2 + (v - v2) / (v1 - v2) * (p1 - p2);
+  }
+  return 0;
+}
+const CHART_SEC = 180;
+const $ = id => document.getElementById(id);
+
+let last = null, lastOkAt = 0, gsOnline = null;
+let lastEventId = 0, serverUptimeAt = null;   // {up: 伺服器開機秒數, at: 瀏覽器時間}
+let events = [];                              // 伺服器 + 網頁本身的事件
+let muted = false, mutedMask = 0, audioCtx = null, beepTimer = null;
+const hist = [];                              // [t, roll, pitch]
+
+function fmtTime(ms) {
+  const d = new Date(ms), p = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function ago(sec) {
+  if (sec < 60) return Math.round(sec) + ' 秒前';
+  if (sec < 3600) return Math.floor(sec / 60) + ' 分鐘前';
+  return Math.floor(sec / 3600) + ' 小時前';
+}
+function alarmMask(d) { return (d.capsized ? 1 : 0) | (d.flooded ? 2 : 0) | (d.sos ? 4 : 0); }
+function alarmNames(d) {
+  const a = [];
+  if (d.sos) a.push('SOS 求救'); if (d.capsized) a.push('翻覆'); if (d.flooded) a.push('進水');
+  return a;
+}
+// 伺服器事件的真實時間：有 NTP 用 epoch，否則用「岸上站開機秒數」換算成瀏覽器時間
+function eventMs(e) {
+  if (e.ms) return e.ms;
+  if (e.epoch) return e.epoch * 1000;
+  if (serverUptimeAt) return serverUptimeAt.at - (serverUptimeAt.up - e.up) * 1000;
+  return Date.now();
+}
+
+// ================= 藍牙 (Web Bluetooth) =================
+// ⚠️ UUID、指令代碼、資料格式必須與 ground_station_ble.ino 一致
+const SVC_UUID    = '6e7b0001-5a1e-4c2b-9b8a-b0a7c0de0001';
+const STATUS_UUID = '6e7b0002-5a1e-4c2b-9b8a-b0a7c0de0001';
+const CMD_UUID    = '6e7b0003-5a1e-4c2b-9b8a-b0a7c0de0001';
+const EVENTS_UUID = '6e7b0004-5a1e-4c2b-9b8a-b0a7c0de0001';
+const CMD = { RESET: 1, MUTE_ON: 2, MUTE_OFF: 3, sos: 10, tilt: 11, flood: 12, normal: 13, reset: 14, EVENTS: 0x20 };
+const STATUS_SIZE = 54, EVENT_SIZE = 25;
+
+let bleDevice = null, chStatus = null, chCmd = null, chEvents = null;
+let wantConnected = false, reconnectTimer = null, notifyGapMs = null, lastNotifyAt = 0;
+// Web Bluetooth 一次只能做一個讀寫，全部排隊執行
+let gattQueue = Promise.resolve();
+function gatt(fn) {
+  const p = gattQueue.then(fn);
+  gattQueue = p.catch(() => {});
+  return p;
+}
+
+// 把岸上站送來的二進位狀態轉成跟 Wi-Fi 版相同欄位的物件，render() 不用改
+function parseStatus(dv) {
+  let o = 0;
+  const u8 = () => dv.getUint8(o++), i8 = () => dv.getInt8(o++);
+  const u16 = () => { const v = dv.getUint16(o, true); o += 2; return v; };
+  const i16 = () => { const v = dv.getInt16(o, true); o += 2; return v; };
+  const u32 = () => { const v = dv.getUint32(o, true); o += 4; return v; };
+  const i32 = () => { const v = dv.getInt32(o, true); o += 4; return v; };
+  const ver = u8(), f = u8(), g = u8();
+  const lat = i32(), lng = i32(), roll = i16(), pitch = i16(), vbat = u16();
+  const sats = u8(), gpsAge = u8(), seq = u16(), rxAge = u32(), loss10 = i16();
+  const rssiUp = i8(), rssiDown = i8(), txFail = u8(), boatCh = u8(), gsCh = u8();
+  const rxTotal = u32(), lostTotal = u32(), badTotal = u32(), resetAgeS = u16(), uptimeS = u32(), lastEv = u32();
+  const have = !!(g & 1), gpsEver = have && gpsAge !== 255;
+  return {
+    ver, haveData: have, disconnected: !!(g & 2), resetPending: !!(g & 4), testMode: !!(g & 8), radioOk: !!(g & 16),
+    buzzerMuted: !!(g & 32), pinRejected: !!(g & 64),
+    capsized: !!(f & 1), flooded: !!(f & 2), sos: !!(f & 4), gpsFix: !!(f & 8), imuOk: !!(f & 16), tilt: !!(f & 32), lowBat: !!(f & 64),
+    lat: gpsEver ? lat / 1e7 : null, lng: gpsEver ? lng / 1e7 : null, gpsAge: gpsEver ? gpsAge : null,
+    roll: roll / 100, pitch: pitch / 100, vbat: have ? vbat / 1000 : null,
+    sats: have ? (sats === 255 ? -1 : sats) : null, seq: have ? seq : null,
+    rxAgeMs: rxAge === 0xFFFFFFFF ? null : rxAge, lossPct: loss10 < 0 ? null : loss10 / 10,
+    rssiUp: rssiUp || null, rssiDown: rssiDown || null, boatTxFail: have ? txFail : null,
+    boatChannel: have ? boatCh : null, gsChannel: gsCh,
+    rxTotal, lostTotal, badTotal, resetAgeS, uptimeS, epoch: 0, lastEventId: lastEv
+  };
+}
+
+function onStatus(d) {
+  const now = Date.now();
+  if (lastNotifyAt) notifyGapMs = notifyGapMs === null ? now - lastNotifyAt : notifyGapMs * 0.8 + (now - lastNotifyAt) * 0.2;
+  lastNotifyAt = now;
+  lastOkAt = now;
+  serverUptimeAt = { up: d.uptimeS, at: now };
+  if (gsOnline === false) addLocalEvent('藍牙連線恢復', false);
+  gsOnline = true;
+  if (d.pinRejected && !(last && last.pinRejected)) askPin('密碼錯誤，指令被拒絕。請輸入岸上站的指令密碼：');
+  last = d;
+  try { localStorage.setItem('boatLast', JSON.stringify({ d, at: now })); } catch (e) {}
+  pushHist(d);
+  render(d, false);
+  if (d.lastEventId > lastEventId) pollEvents();
+}
+
+async function handleStatusValue(dv) {
+  // 手機的藍牙封包上限 (MTU) 太小時，通知只會帶前 20 bytes，改成直接讀完整的值
+  if (dv.byteLength < STATUS_SIZE) dv = await gatt(() => chStatus.readValue());
+  if (dv.byteLength >= STATUS_SIZE) onStatus(parseStatus(dv));
+}
+
+async function bleConnect() {
+  if (!navigator.bluetooth) { showUnsupported(); return; }
+  try {
+    if (!bleDevice) {
+      bleDevice = await navigator.bluetooth.requestDevice({ filters: [{ services: [SVC_UUID] }] });
+      bleDevice.addEventListener('gattserverdisconnected', onBleDisconnected);
+    }
+    wantConnected = true;
+    setPill($('pGs'), '藍牙：連線中…', 'warn');
+    const server = await bleDevice.gatt.connect();
+    const svc = await server.getPrimaryService(SVC_UUID);
+    chStatus = await svc.getCharacteristic(STATUS_UUID);
+    chCmd = await svc.getCharacteristic(CMD_UUID);
+    chEvents = await svc.getCharacteristic(EVENTS_UUID);
+    gattQueue = Promise.resolve();
+    chStatus.addEventListener('characteristicvaluechanged', e => handleStatusValue(e.target.value));
+    await gatt(() => chStatus.startNotifications());
+    await handleStatusValue(await gatt(() => chStatus.readValue()));
+    $('btnConnect').textContent = '藍牙已連線（' + (bleDevice.name || '岸上站') + '）';
+    $('btnConnect').disabled = true;
+  } catch (e) {
+    if (e.name === 'NotFoundError') return;   // 使用者取消選擇
+    console.warn(e);
+    if (bleDevice && wantConnected) scheduleReconnect();
+    else setPill($('pGs'), '藍牙：連線失敗', 'bad');
+  }
+}
+
+function onBleDisconnected() {
+  chStatus = chCmd = chEvents = null;
+  if (gsOnline) addLocalEvent('藍牙斷線', true);
+  gsOnline = false;
+  lastNotifyAt = 0;
+  $('btnConnect').disabled = false;
+  $('btnConnect').textContent = '重新連線藍牙';
+  render(last, true);
+  if (wantConnected) scheduleReconnect();
+}
+
+function scheduleReconnect() {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => { if (!bleDevice.gatt.connected) bleConnect(); }, 2000);   // 走遠或岸上站重開後自動重連
+}
+
+function getPin() { try { return localStorage.getItem('boatPin') || ''; } catch (e) { return ''; } }
+function askPin(msg) {
+  const p = prompt(msg || '請輸入岸上站的指令密碼（沒設定密碼就直接按確定）：', getPin());
+  if (p !== null) { try { localStorage.setItem('boatPin', p); } catch (e) {} }
+}
+
+async function sendCmd(code) {
+  if (!chCmd) throw new Error('藍牙未連線');
+  const pin = new TextEncoder().encode(getPin());
+  const buf = new Uint8Array(1 + pin.length);
+  buf[0] = code; buf.set(pin, 1);
+  await gatt(() => chCmd.writeValue(buf));
+}
+
+// 事件：先寫「從第幾筆之後」，再讀取一批（每批最多 18 筆），讀到不滿一批為止
+let evBusy = false;
+async function pollEvents() {
+  if (evBusy || !chCmd) return;
+  evBusy = true;
+  try {
+    for (let round = 0; round < 30; round++) {
+      const req = new DataView(new ArrayBuffer(5));
+      req.setUint8(0, CMD.EVENTS); req.setUint32(1, lastEventId, true);
+      await gatt(() => chCmd.writeValue(req.buffer));
+      let dv = null;
+      for (let tries = 0; tries < 10; tries++) {   // 岸上站在 loop 裡準備資料，稍等一下再讀
+        await new Promise(r => setTimeout(r, 40));
+        const v = await gatt(() => chEvents.readValue());
+        if (v.byteLength >= 5 && v.getUint32(0, true) === lastEventId) { dv = v; break; }
+      }
+      if (!dv) break;
+      const n = dv.getUint8(4);
+      for (let i = 0; i < n; i++) {
+        const o = 5 + i * EVENT_SIZE;
+        const e = {
+          id: dv.getUint32(o, true), up: dv.getUint32(o + 4, true), type: dv.getUint8(o + 8), arg: dv.getUint8(o + 9),
+          flags: dv.getUint8(o + 10), roll: dv.getInt16(o + 19, true) / 100, pitch: dv.getInt16(o + 21, true) / 100,
+          vbat: dv.getUint16(o + 23, true) / 1000
+        };
+        const lat = dv.getInt32(o + 11, true), lng = dv.getInt32(o + 15, true);
+        if (lat || lng) { e.lat = lat / 1e7; e.lng = lng / 1e7; }
+        if (e.id <= lastEventId) continue;
+        e.text = eventText(e.type, e.arg);
+        e.alarm = e.type === 3 || e.type === 2;
+        e.ms = eventMs(e);
+        events.push(e);
+        lastEventId = e.id;
+      }
+      if (n < 18) break;
+    }
+    if (events.length > 2000) events = events.slice(-2000);
+    renderEvents();
+  } catch (e) {
+    console.warn(e);
+  } finally { evBusy = false; }
+}
+
+function alarmMaskText(m) {
+  const a = [];
+  if (m & 1) a.push('翻覆'); if (m & 2) a.push('進水'); if (m & 4) a.push('SOS');
+  return a.join('、') || '無';
+}
+const BOOT_REASON = { 1: '上電開機', 3: '軟體重啟', 4: '程式當機', 5: '看門狗重開', 6: '看門狗重開', 7: '看門狗重開', 9: '電壓不足' };
+function eventText(type, arg) {
+  switch (type) {
+    case 0: return '岸上站開機';
+    case 1: return '與船端通訊恢復';
+    case 2: return '與船端通訊中斷';
+    case 3: return '警報觸發：' + alarmMaskText(arg);
+    case 4: return '警報解除：' + alarmMaskText(arg);
+    case 5: return '岸上按下 Reset（解除 ' + alarmMaskText(arg) + '）';
+    case 6: return '船端確認 Reset';
+    case 7: return '船端重新開機（' + (BOOT_REASON[arg] || '其他') + '）';
+    case 8: return '船端低電量';
+    case 9: return '船端電量恢復';
+    case 10: return 'GPS 定位成功';
+    case 11: return 'GPS 失去定位';
+    case 12: return '船端姿態感測器故障';
+    case 13: return '船端姿態感測器恢復';
+    case 14: return '航跡點';
+    case 15: return '進入測試模式';
+    case 16: return '結束測試模式';
+  }
+  return '未知事件';
+}
+
+function showUnsupported() {
+  const off = $('offline');
+  off.style.display = 'block';
+  off.textContent = '⚠️ 這個瀏覽器不支援網頁藍牙。Android／電腦請用 Chrome 或 Edge；iPhone 請安裝「Bluefy」瀏覽器再開這個網頁。';
+}
+
+function addLocalEvent(text, alarm) {
+  events.push({ ms: Date.now(), text: '［網頁］' + text, alarm, local: true });
+  renderEvents();
+}
+
+function pushHist(d) {
+  const now = Date.now();
+  if (!d.disconnected && d.haveData) hist.push([now, d.roll, d.pitch]);
+  while (hist.length && hist[0][0] < now - CHART_SEC * 1000) hist.shift();
+  drawChart();
+}
+
+function setPill(el, text, cls) { el.textContent = text; el.className = 'pill ' + (cls || ''); }
+
+function render(d, offline) {
+  const off = $('offline');
+  if (offline) {
+    off.style.display = 'block';
+    off.textContent = d
+      ? `⚠️ 藍牙沒有連上岸上站。以下是 ${fmtTime(lastOkAt)} 的最後狀態（${ago((Date.now() - lastOkAt) / 1000)}）。請按「連線藍牙」，手機要在岸上站附近（約 10 公尺內）。`
+      : '⚠️ 藍牙還沒連上岸上站，請按上方「連線藍牙」。';
+    setPill($('pGs'), gsOnline === null ? '藍牙：未連線' : '藍牙：已斷線', 'bad');
+  } else {
+    off.style.display = 'none';
+    setPill($('pGs'), '藍牙：已連線', 'ok');
+  }
+  setPill($('pUpd'), '最後更新：' + (lastOkAt ? fmtTime(lastOkAt).split(' ')[1] : '—'), offline ? 'warn' : '');
+  document.querySelectorAll('.card').forEach(c => c.classList.toggle('stale', offline || !d || d.disconnected));
+  if (!d) return;
+
+  // --- 船端連線 ---
+  if (!d.radioOk) setPill($('pBoat'), '船端：岸上 ESP-NOW 啟動失敗', 'bad');
+  else if (!d.haveData) setPill($('pBoat'), '船端：尚未收到資料', 'warn');
+  else if (d.testMode) setPill($('pBoat'), '測試模式', 'warn');
+  else if (d.disconnected) setPill($('pBoat'), '船端：通訊中斷（' + ago(d.rxAgeMs / 1000) + '）', 'bad');
+  else setPill($('pBoat'), '船端：連線中', 'ok');
+
+  // --- 警報 ---
+  const names = alarmNames(d), mask = alarmMask(d), box = $('alarm');
+  if ((mask & ~mutedMask) !== 0) { muted = false; }   // 出現新的警報 → 自動取消靜音
+  mutedMask &= mask;
+  if (names.length) {
+    box.className = 'bad';
+    $('alarmTitle').textContent = '🚨 ' + names.join('、');
+    $('alarmSub').textContent = d.resetPending
+      ? `已送出解除指令，等待船端確認（${d.resetAgeS} 秒）…船端確認前警報會持續顯示`
+      : (d.disconnected ? '⚠️ 目前與船端通訊中斷，這是中斷前最後收到的狀態' : '警報已鎖定，只有按下 Reset 才會解除');
+  } else if (!d.haveData && !d.testMode) {
+    box.className = 'grey'; $('alarmTitle').textContent = '等待船端資料…'; $('alarmSub').textContent = '';
+  } else if (d.disconnected) {
+    box.className = 'warn'; $('alarmTitle').textContent = '⚠️ 與船端通訊中斷';
+    $('alarmSub').textContent = '最後一次收到資料：' + ago(d.rxAgeMs / 1000);
+  } else if (d.tilt) {
+    box.className = 'warn'; $('alarmTitle').textContent = '⚠️ 船身傾斜超過 25°'; $('alarmSub').textContent = '提示，不鎖定';
+  } else {
+    box.className = ''; $('alarmTitle').textContent = '✅ 一切正常'; $('alarmSub').textContent = d.resetPending ? '等待船端確認解除…' : '';
+  }
+  $('btnReset').disabled = offline || !names.length;
+  $('btnMute').textContent = muted ? '🔔 取消靜音' : '🔇 靜音';
+  updateSound(names.length > 0 && !offline);
+
+  // --- 姿態 ---
+  $('roll').textContent = d.haveData || d.testMode ? d.roll.toFixed(1) + '°' : '—';
+  $('pitch').textContent = d.haveData || d.testMode ? d.pitch.toFixed(1) + '°' : '—';
+  $('hull').setAttribute('transform', `rotate(${Math.max(-180, Math.min(180, d.roll || 0))})`);
+  $('attState').textContent = !d.haveData ? '—' : !d.imuOk ? '⚠️ 姿態感測器故障，角度不可信' :
+    d.capsized ? '翻覆' : d.tilt ? '傾斜（> 25°）' : '平穩';
+
+  // --- GPS ---
+  if (!d.haveData) { $('gpsState').textContent = '—'; }
+  else if (d.sats === -1) $('gpsState').textContent = '⚠️ 沒收到 GPS 模組資料';
+  else if (d.lat === null) $('gpsState').textContent = '📡 尚未定位';
+  else if (!d.gpsFix) $('gpsState').textContent = '⚠️ 失去定位（最後位置 ' + ago(d.gpsAge) + '）';
+  else $('gpsState').textContent = '✅ 定位中';
+  $('lat').textContent = d.lat === null || d.lat === undefined ? '—' : d.lat.toFixed(6);
+  $('lng').textContent = d.lng === null || d.lng === undefined ? '—' : d.lng.toFixed(6);
+  $('sats').textContent = d.sats === null || d.sats < 0 ? '—' : d.sats;
+  $('mapLink').innerHTML = d.lat === null || d.lat === undefined ? '—' :
+    `<a target="_blank" rel="noopener" href="https://www.google.com/maps?q=${d.lat},${d.lng}">在地圖開啟</a>`;
+
+  // --- 電池 ---
+  if (d.vbat === null || d.vbat === undefined) { $('vbat').textContent = '—'; $('battBar').style.width = '0'; $('batState').textContent = '—'; }
+  else {
+    const pct = liionPct(d.vbat);
+    if (d.vbat > 4.5) {
+      // 高於鋰電池滿電電壓：量測線多半接到升壓後的 5 V，這樣看不出剩多少電
+      $('vbat').textContent = d.vbat.toFixed(2) + ' V';
+      $('battBar').style.width = '0';
+      $('batState').textContent = '⚠️ 電壓高於鋰電池滿電，量測線可能接在升壓後的 5 V，無法判斷電量';
+    } else {
+      $('vbat').textContent = `${d.vbat.toFixed(2)} V（約 ${Math.round(pct)}%）`;
+      $('battBar').style.width = pct + '%';
+      $('battBar').style.background = d.lowBat ? 'var(--bad)' : pct < 30 ? 'var(--warn)' : 'var(--ok)';
+      $('batState').textContent = d.lowBat ? '⚠️ 低電量，請盡快回港或充電' : '正常';
+    }
+  }
+
+  // --- 通訊品質 ---
+  // 品質以「較弱那一方向的訊號」+ 丟包率判斷：> −70 dBm 良好、−70～−85 普通、< −85 容易斷
+  const has = v => v !== null && v !== undefined;
+  const rssiMin = [d.rssiUp, d.rssiDown].filter(has).reduce((a, b) => Math.min(a, b), 0);
+  let q = '—';
+  if (d.haveData && d.disconnected) { q = '斷線'; }
+  else if (has(d.lossPct)) {
+    if (d.lossPct < 5 && (!rssiMin || rssiMin > -70)) q = '良好';
+    else if (d.lossPct < 20 && (!rssiMin || rssiMin > -85)) q = '普通';
+    else q = '差';
+  }
+  $('quality').textContent = q;
+  $('loss').textContent = has(d.lossPct) ? d.lossPct.toFixed(1) + ' %' : '—';
+  $('rssiUp').textContent = has(d.rssiUp) ? d.rssiUp + ' dBm' : '—';
+  $('rssiDown').textContent = has(d.rssiDown) ? d.rssiDown + ' dBm' : '—';
+  $('txFail').textContent = has(d.boatTxFail) ? d.boatTxFail + ' %' : '—';
+  $('chan').textContent = has(d.boatChannel) ? `${d.boatChannel}／${d.gsChannel}` : (has(d.gsChannel) ? `—／${d.gsChannel}` : '—');
+  $('rxAge').textContent = d.rxAgeMs === null || d.rxAgeMs === undefined ? '—' : (d.rxAgeMs / 1000).toFixed(1) + ' 秒前';
+  $('rtt').textContent = notifyGapMs === null || offline ? '—' : Math.round(notifyGapMs) + ' ms' + (notifyGapMs > 600 ? '（偏慢）' : '');
+  $('totals').textContent = d.rxTotal === undefined ? '—' : `${d.rxTotal}／${d.lostTotal}／${d.badTotal}`;
+}
+
+function drawChart() {
+  const cv = $('chart'), dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const maxA = 90, y = a => h / 2 - (Math.max(-maxA, Math.min(maxA, a)) / maxA) * (h / 2 - 6);
+  const now = Date.now(), x = t => w - (now - t) / (CHART_SEC * 1000) * w;
+  g.font = '11px sans-serif'; g.fillStyle = '#8aa0b4';
+  for (const [a, c] of [[0, '#2a3a4a'], [25, '#f39c12'], [-25, '#f39c12'], [45, '#e74c3c'], [-45, '#e74c3c']]) {
+    g.strokeStyle = c; g.setLineDash(a ? [4, 4] : []); g.beginPath(); g.moveTo(0, y(a)); g.lineTo(w, y(a)); g.stroke();
+    if (a) g.fillText(a + '°', 4, y(a) - 3);
+  }
+  g.setLineDash([]);
+  for (const [i, c, name] of [[1, '#3498db', '橫搖'], [2, '#2ecc71', '縱搖']]) {
+    g.strokeStyle = c; g.lineWidth = 2; g.beginPath();
+    let prevT = 0;
+    for (const p of hist) { (p[0] - prevT > 3000 ? g.moveTo : g.lineTo).call(g, x(p[0]), y(p[i])); prevT = p[0]; }
+    g.stroke(); g.lineWidth = 1;
+    g.fillStyle = c; g.fillText(name, w - (i === 1 ? 70 : 36), 12);
+  }
+}
+
+function renderEvents() {
+  const showTrack = $('showTrack').checked;
+  const rows = events.filter(e => showTrack || e.type !== 14).slice(-300).reverse();
+  $('evBody').innerHTML = rows.map(e => {
+    const pos = e.lat !== undefined ? `${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}` : '';
+    return `<tr class="${e.alarm ? 'a' : ''}"><td class="t">${fmtTime(e.ms)}</td><td>${e.text}</td><td>${pos}</td></tr>`;
+  }).join('') || '<tr><td colspan="3" style="color:var(--muted)">尚無事件</td></tr>';
+}
+
+function exportCsv() {
+  const esc = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
+  const lines = ['時間,事件,緯度,經度,橫搖,縱搖,電池V'];
+  for (const e of [...events].sort((a, b) => a.ms - b.ms)) {
+    const d = new Date(e.ms), p = n => String(n).padStart(2, '0');
+    const t = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    lines.push([t, e.text, e.lat ?? '', e.lng ?? '', e.roll ?? '', e.pitch ?? '', e.vbat ?? ''].map(esc).join(','));
+  }
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'boat_events_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// --- 警報聲（瀏覽器規定要先點過畫面才能發聲）---
+function ensureAudio() { if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } }
+function beep() {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator(), gn = audioCtx.createGain();
+  o.frequency.value = 1800; gn.gain.value = 0.2; o.connect(gn); gn.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + 0.25);
+}
+function updateSound(alarm) {
+  const on = alarm && !muted;
+  if (on && !beepTimer) { beep(); if (navigator.vibrate) navigator.vibrate([300, 200, 300]); beepTimer = setInterval(beep, 600); }
+  if (!on && beepTimer) { clearInterval(beepTimer); beepTimer = null; }
+}
+
+document.addEventListener('click', ensureAudio, { once: true });
+$('btnMute').onclick = () => {
+  muted = !muted;
+  mutedMask = muted && last ? alarmMask(last) : 0;
+  sendCmd(muted ? CMD.MUTE_ON : CMD.MUTE_OFF).catch(() => {});   // 岸上站的蜂鳴器也一起靜音
+  if (last) render(last, gsOnline === false);
+};
+$('btnReset').onclick = async () => {
+  if (!last || !confirm('確定要解除「' + alarmNames(last).join('、') + '」警報嗎？\n請先確認船上人員安全。')) return;
+  try {
+    await sendCmd(CMD.RESET);
+    addLocalEvent('已送出 Reset，等待船端確認', false);
+  } catch (e) { alert('送出失敗：藍牙沒有連上岸上站'); }
+};
+document.querySelectorAll('[data-test]').forEach(b => b.onclick = async () => {
+  try { await sendCmd(CMD[b.dataset.test]); } catch (e) { alert('送出失敗：藍牙沒有連上岸上站'); }
+});
+$('btnConnect').onclick = () => { ensureAudio(); bleConnect(); };
+$('btnPin').onclick = () => askPin();
+$('btnCsv').onclick = exportCsv;
+$('showTrack').onchange = renderEvents;
+window.addEventListener('resize', drawChart);
+
+// 打開網頁時先顯示上次的快取（離線也看得到最後狀態）
+try {
+  const c = JSON.parse(localStorage.getItem('boatLast'));
+  if (c) { last = c.d; lastOkAt = c.at; render(last, true); }
+} catch (e) {}
+renderEvents();
+if (!navigator.bluetooth) showUnsupported();
+setInterval(pollEvents, 10000);
+// 斷線時每秒更新「N 秒前」
+setInterval(() => { if (gsOnline !== true && last) render(last, true); }, 1000);
+</script>
+</body>
+</html>
