@@ -2,154 +2,326 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b3a5b">
 <title>漁船監控中心</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
-:root{--bg:#0f1720;--card:#18232f;--line:#2a3a4a;--text:#e6edf3;--muted:#8aa0b4;--ok:#2ecc71;--warn:#f39c12;--bad:#e74c3c;--info:#3498db}
+/* ===== 色彩：淺色（白天在戶外看）／深色（晚上在家看），預設跟著手機設定 ===== */
+:root{
+  --bg:#eaf0f4;--surface:#ffffff;--surface-2:#f3f7fa;--line:#d3dde5;
+  --text:#0e1c2b;--muted:#4f6377;--brand:#0b3a5b;--brand-text:#f2f7fb;--accent:#0a76a0;
+  --ok:#17803f;--ok-bg:#e1f3e8;--warn:#a85f00;--warn-bg:#fff0d4;--bad:#c42b23;--bad-bg:#fde3e0;--alarm:#c42b23;
+  --shadow:0 1px 2px rgba(14,28,43,.06),0 4px 14px rgba(14,28,43,.06);
+  --chart-grid:#c9d4dd;--roll:#0a76a0;--pitch:#7a4fc0;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#07121c;--surface:#0e1e2c;--surface-2:#122638;--line:#1e3448;
+  --text:#e6eef5;--muted:#93a8bb;--brand:#0a2539;--brand-text:#e6eef5;--accent:#4fb4dc;
+  --ok:#3fcf7e;--ok-bg:#0e3020;--warn:#f0a93a;--warn-bg:#36270b;--bad:#ff6a5c;--bad-bg:#421713;--alarm:#b3261e;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);
+  --chart-grid:#22394d;--roll:#4fb4dc;--pitch:#b394f0;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#07121c;--surface:#0e1e2c;--surface-2:#122638;--line:#1e3448;
+  --text:#e6eef5;--muted:#93a8bb;--brand:#0a2539;--brand-text:#e6eef5;--accent:#4fb4dc;
+  --ok:#3fcf7e;--ok-bg:#0e3020;--warn:#f0a93a;--warn-bg:#36270b;--bad:#ff6a5c;--bad-bg:#421713;--alarm:#b3261e;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px rgba(0,0,0,.25);
+  --chart-grid:#22394d;--roll:#4fb4dc;--pitch:#b394f0;
+  color-scheme:dark;
+}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;font-size:16px}
-header{position:sticky;top:0;z-index:5;background:#0b1118;border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
-h1{font-size:18px;margin:0}
-.pills{display:flex;flex-wrap:wrap;gap:6px}
-.pill{font-size:13px;padding:3px 10px;border-radius:999px;background:var(--line);white-space:nowrap}
-.pill.ok{background:#1e5135}.pill.warn{background:#6b4a0f}.pill.bad{background:#6e1f1a}
-main{max-width:1100px;margin:0 auto;padding:12px 16px 40px}
-#offline{display:none;background:#6b4a0f;border-radius:10px;padding:10px 14px;margin-bottom:12px}
-#alarm{border-radius:14px;padding:16px;margin-bottom:12px;background:#1e5135;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
-#alarm.bad{background:var(--bad);animation:blink 1s infinite}
-#alarm.warn{background:#6b4a0f}
-#alarm.grey{background:#3a4654}
-@keyframes blink{50%{background:#8e2a20}}
-#alarmTitle{font-size:26px;font-weight:700}
-#alarmSub{font-size:14px;opacity:.9;margin-top:4px}
-.btns{display:flex;gap:8px;flex-wrap:wrap}
-button{font:inherit;border:0;border-radius:10px;padding:10px 16px;background:var(--line);color:var(--text);cursor:pointer;min-height:44px}
-button.primary{background:#fff;color:#8e2a20;font-weight:700}
-button:disabled{opacity:.5;cursor:default}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
-.card h2{font-size:14px;color:var(--muted);margin:0 0 10px;font-weight:600}
-.big{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
-.row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:14px}
-.row span:first-child{color:var(--muted)}
-.row span:last-child{font-variant-numeric:tabular-nums;text-align:right}
-.stale .big,.stale .row span:last-child,.stale svg{opacity:.45}
-.batt{height:16px;background:#0b1118;border-radius:8px;overflow:hidden;margin:8px 0}
-.batt>div{height:100%;width:0;background:var(--ok);transition:width .4s}
-#boatSvg{display:block;margin:4px auto 8px}
-canvas{width:100%;height:180px;display:block}
-.wide{grid-column:1/-1}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:top}
-th{color:var(--muted);font-weight:600}
-td.t{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted)}
-tr.a td{color:#ff8a7a}
-#evWrap{max-height:340px;overflow:auto}
-.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:8px}
-label{font-size:14px;color:var(--muted)}
-details summary{cursor:pointer;color:var(--muted)}
-a{color:#7fc4ff}
-@media (max-width:600px){#alarmTitle{font-size:22px}.big{font-size:24px}.btns button{flex:1}th:nth-child(3),td:nth-child(3){display:none}}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif}
+::selection{background:var(--accent);color:#fff}
+.num{font-variant-numeric:tabular-nums}
+.ico{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ico.sm{width:16px;height:16px}
+
+/* ===== 頂部列 ===== */
+header{position:sticky;top:0;z-index:1000;background:var(--brand);color:var(--brand-text);
+  padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));display:flex;align-items:center;gap:12px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:17px;margin-right:auto;letter-spacing:.02em}
+#btnConnect{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);
+  color:inherit;border-radius:999px;padding:6px 14px 6px 10px;min-height:36px;font:inherit;font-size:14px;cursor:pointer}
+#btnConnect:hover{background:rgba(255,255,255,.16)}
+#btnConnect .dot{width:8px;height:8px;border-radius:50%;background:#9fb3c4}
+#btnConnect[data-state="connected"] .dot{background:#3fcf7e;box-shadow:0 0 0 3px rgba(63,207,126,.25)}
+#btnConnect[data-state="connecting"] .dot{background:#f0a93a;animation:pulse 1s ease-in-out infinite}
+#btnConnect[data-state="disconnected"] .dot,#btnConnect[data-state="failed"] .dot{background:#ff6a5c}
+@keyframes pulse{50%{opacity:.35}}
+
+main{max-width:1120px;margin:0 auto;padding:16px 16px calc(40px + env(safe-area-inset-bottom))}
+#offline{display:none;align-items:flex-start;gap:10px;background:var(--warn-bg);color:var(--text);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:15px}
+#offline .ico{color:var(--warn);margin-top:2px}
+
+/* ===== 狀態主橫幅 ===== */
+#hero{border-radius:16px;padding:18px;margin-bottom:16px;background:var(--surface);box-shadow:var(--shadow);
+  display:grid;grid-template-columns:auto 1fr;gap:4px 14px;align-items:center}
+#heroIcon{grid-row:span 2;width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:var(--surface-2);color:var(--muted)}
+#heroIcon .ico{width:26px;height:26px}
+#heroTitle{font-size:24px;font-weight:700;line-height:1.25}
+#heroSub{font-size:15px;color:var(--muted)}
+#hero .actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+#hero.ok #heroIcon{background:var(--ok-bg);color:var(--ok)}
+#hero.warn{background:var(--warn-bg)} #hero.warn #heroIcon{background:var(--surface);color:var(--warn)}
+#hero.bad{background:var(--alarm);color:#fff} #hero.bad #heroSub{color:rgba(255,255,255,.9)}
+#hero.bad #heroIcon{background:rgba(255,255,255,.18);color:#fff;animation:ring 1.4s ease-out infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(255,255,255,.55)}100%{box-shadow:0 0 0 16px rgba(255,255,255,0)}}
+#emergency{display:none;gap:8px;flex-wrap:wrap}
+#hero.bad #emergency{display:flex}
+
+/* ===== 按鈕 ===== */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font:inherit;font-size:15px;font-weight:600;border-radius:10px;
+  padding:10px 16px;min-height:44px;border:1px solid var(--line);background:var(--surface);color:var(--text);cursor:pointer;text-decoration:none;
+  transition:background-color .15s,border-color .15s,transform .1s}
+.btn:hover{background:var(--surface-2)}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible,#btnConnect:focus-visible,.chip:focus-visible,.seg button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.08)}
+#hero.bad .btn{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.35);color:#fff}
+#hero.bad .btn:hover{background:rgba(255,255,255,.24)}
+#hero.bad .btn.solid{background:#fff;color:var(--alarm);border-color:#fff}
+#hero.bad a.btn.call{background:#fff;color:#8e1d17;border-color:#fff}
+
+/* ===== 版面 ===== */
+.layout{display:grid;gap:16px;grid-template-columns:1fr}
+@media (min-width:880px){.layout{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.span2{grid-column:1/-1}}
+.panel{background:var(--surface);border-radius:16px;padding:16px;box-shadow:var(--shadow);min-width:0}
+.panel h2{font-size:15px;font-weight:700;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+.panel h2 .meta{margin-left:auto;font-size:13px;font-weight:500;color:var(--muted)}
+.stale .gauge,.stale .big,.stale .kv dd,.stale #map{opacity:.5}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:520px){.pair{grid-template-columns:1fr}}
+.big{font-size:30px;font-weight:700;line-height:1.15}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:12px 0 0;font-size:14px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;text-align:right}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;padding:3px 10px;border-radius:999px;background:var(--surface-2);color:var(--muted)}
+.tag.ok{background:var(--ok-bg);color:var(--ok)} .tag.warn{background:var(--warn-bg);color:var(--warn)} .tag.bad{background:var(--bad-bg);color:var(--bad)}
+
+/* ===== 傾斜儀（主視覺）===== */
+.gauge{display:block;width:100%;max-width:420px;margin:0 auto}
+.gauge .zone{fill:none;stroke-width:14}
+.gauge .tick{stroke:var(--muted);stroke-width:1.5}
+.gauge .tickl{fill:var(--muted);font-size:10px;text-anchor:middle}
+.gauge #needle{transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+.gauge #hullG{transition:transform .35s cubic-bezier(.2,.8,.2,1)}
+.att-read{display:flex;justify-content:center;align-items:baseline;gap:24px;margin-top:4px}
+.att-read .lab{font-size:13px;color:var(--muted);text-align:center}
+.pitchbar{position:relative;height:8px;border-radius:4px;background:var(--surface-2);margin:14px 0 4px}
+.pitchbar::before{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:2px;background:var(--line)}
+#pitchFill{position:absolute;top:0;bottom:0;border-radius:4px;background:var(--pitch);transition:left .35s,width .35s}
+
+/* ===== 地圖 ===== */
+#map{height:240px;border-radius:12px;overflow:hidden;background:var(--surface-2);margin-top:12px;z-index:0}
+#mapFallback{display:none;height:120px;border-radius:12px;background:var(--surface-2);color:var(--muted);place-items:center;text-align:center;padding:12px;font-size:14px;margin-top:12px}
+.boatpin{width:22px;height:22px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.boatpin.alarm{background:#c42b23;animation:ring 1.4s ease-out infinite}
+.mepin{width:16px;height:16px;border-radius:50%;background:#2f7cf6;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.rowbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+
+/* ===== 電池 ===== */
+.battery{display:flex;align-items:center;gap:4px;margin:12px 0 4px}
+.battery .shell{flex:1;height:26px;border:2px solid var(--muted);border-radius:6px;padding:2px}
+.battery .cap{width:4px;height:12px;border-radius:0 2px 2px 0;background:var(--muted)}
+#battFill{height:100%;width:0;border-radius:3px;background:var(--ok);transition:width .4s,background-color .3s}
+
+/* ===== 訊號 ===== */
+.bars{display:inline-flex;align-items:flex-end;gap:3px;height:22px}
+.bars i{display:block;width:6px;border-radius:2px;background:var(--line)}
+.bars i:nth-child(1){height:30%}.bars i:nth-child(2){height:55%}.bars i:nth-child(3){height:78%}.bars i:nth-child(4){height:100%}
+.bars[data-q="3"] i:nth-child(-n+4),.bars[data-q="2"] i:nth-child(-n+3){background:var(--ok)}
+.bars[data-q="1"] i:nth-child(-n+2){background:var(--warn)} .bars[data-q="0"] i:nth-child(1){background:var(--bad)}
+details.more{margin-top:10px} details.more summary{cursor:pointer;color:var(--accent);font-size:14px;font-weight:600}
+
+/* ===== 曲線 ===== */
+canvas{width:100%;height:190px;display:block}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--muted)} .legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+/* ===== 事件 ===== */
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.chips{display:flex;gap:6px;margin-right:auto}
+.chip{font:inherit;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:6px 12px;min-height:36px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--text);border-color:var(--text);color:var(--surface)}
+#evWrap{max-height:360px;overflow:auto;border-top:1px solid var(--line)}
+.ev{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;padding:10px 2px;border-bottom:1px solid var(--line);font-size:15px}
+.ev time{color:var(--muted);font-size:13px;white-space:nowrap}
+.ev .pos{grid-column:2;color:var(--muted);font-size:13px}
+.ev.alarm .txt{color:var(--bad);font-weight:600}
+.ev .src{font-size:12px;color:var(--muted);margin-left:6px}
+.empty{color:var(--muted);font-size:14px;padding:16px 2px}
+
+/* ===== 設定 ===== */
+.set{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.set:last-child{border-bottom:0}
+.set .desc{font-size:13px;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{font:inherit;font-size:14px;border:0;background:var(--surface);color:var(--muted);padding:8px 14px;min-height:40px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.switch{appearance:none;width:46px;height:28px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;transition:background-color .2s;margin:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s}
+.switch:checked{background:var(--accent)} .switch:checked::after{transform:translateX(18px)}
+.switch:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.testbtns{display:flex;flex-wrap:wrap;gap:8px}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;background:var(--text);color:var(--surface);
+  padding:10px 16px;border-radius:10px;font-size:14px;pointer-events:none;transition:opacity .2s,transform .2s;z-index:2000}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+.leaflet-container{font:inherit}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
-<header>
-  <h1>🚢 漁船監控中心</h1>
-  <div class="pills">
-    <button id="btnConnect" class="primary" style="min-height:32px;padding:4px 12px">連線藍牙</button>
-    <span class="pill" id="pGs">藍牙：未連線</span>
-    <span class="pill" id="pBoat">船端：—</span>
-    <span class="pill" id="pUpd">最後更新：—</span>
-  </div>
-</header>
-<main>
-  <div id="offline"></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-anchor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><path d="M12 22V8M5 12H2a10 10 0 0 0 20 0h-3"/></symbol>
+  <symbol id="i-bt" viewBox="0 0 24 24"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-unlink" viewBox="0 0 24 24"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 4 8M8 12h4M2 2l20 20"/></symbol>
+  <symbol id="i-wait" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-belloff" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 9.3-5M18 8c0 7 3 9 3 9H9M6.3 9.5C5.9 15.5 3 17 3 17h3M10.3 21a1.94 1.94 0 0 0 3.4 0M2 2l20 20"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/></symbol>
+  <symbol id="i-signal" viewBox="0 0 24 24"><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/></symbol>
+  <symbol id="i-tilt" viewBox="0 0 24 24"><path d="M2 18h20M5 14l14-6M12 4v4"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></symbol>
+</svg>
 
-  <section id="alarm" class="grey">
-    <div>
-      <div id="alarmTitle">等待資料…</div>
-      <div id="alarmSub"></div>
-    </div>
-    <div class="btns">
-      <button id="btnMute">🔇 靜音</button>
-      <button id="btnReset" class="primary" disabled>解除警報 (Reset)</button>
+<header>
+  <div class="brand"><svg class="ico"><use href="#i-anchor"/></svg>漁船監控中心</div>
+  <button id="btnConnect" data-state="idle" aria-live="polite"><span class="dot"></span><span id="connText">連線藍牙</span></button>
+</header>
+
+<main>
+  <div id="offline" role="status"><svg class="ico"><use href="#i-alert"/></svg><span id="offlineText"></span></div>
+
+  <section id="hero" aria-live="assertive">
+    <div id="heroIcon"><svg class="ico"><use id="heroUse" href="#i-wait"/></svg></div>
+    <div id="heroTitle">尚未連線</div>
+    <div id="heroSub">按右上角「連線藍牙」，選擇 BoatCtrl。</div>
+    <div class="actions">
+      <div id="emergency">
+        <a class="btn call" href="tel:118"><svg class="ico"><use href="#i-phone"/></svg>撥打 118 海巡</a>
+        <button class="btn" id="btnShare"><svg class="ico"><use href="#i-share"/></svg>分享位置</button>
+      </div>
+      <button class="btn" id="btnMute" style="display:none"><svg class="ico"><use id="muteUse" href="#i-belloff"/></svg><span id="muteText">靜音</span></button>
+      <button class="btn solid" id="btnReset" style="display:none" disabled>解除警報</button>
     </div>
   </section>
 
-  <div class="grid">
-    <div class="card" id="cAtt">
-      <h2>姿態</h2>
-      <svg id="boatSvg" width="160" height="90" viewBox="-80 -45 160 90" aria-hidden="true">
-        <line x1="-78" y1="20" x2="78" y2="20" stroke="#3498db" stroke-width="2" stroke-dasharray="4 4"/>
-        <g id="hull"><path d="M-50 0 L50 0 L35 22 L-35 22 Z" fill="#8aa0b4"/><rect x="-8" y="-24" width="16" height="24" fill="#b8c7d6"/></g>
+  <div class="layout">
+    <section class="panel" id="pAtt">
+      <h2><svg class="ico"><use href="#i-tilt"/></svg>船身姿態<span class="meta" id="attState">—</span></h2>
+      <svg class="gauge" viewBox="-120 -112 240 128" role="img" aria-labelledby="rollVal">
+        <g id="zones"></g>
+        <g id="ticks"></g>
+        <line x1="-104" y1="0" x2="104" y2="0" stroke="var(--line)" stroke-width="1.5"/>
+        <g id="hullG"><path d="M-30 -2 L30 -2 L22 12 L-22 12 Z" fill="var(--text)"/><rect x="-6" y="-18" width="12" height="16" rx="1.5" fill="var(--text)"/></g>
+        <g id="needle"><line x1="0" y1="-20" x2="0" y2="-98" stroke="var(--text)" stroke-width="3" stroke-linecap="round"/><circle cx="0" cy="-98" r="4" fill="var(--text)"/></g>
       </svg>
-      <div class="row"><span>橫搖 Roll</span><span class="big" id="roll">—</span></div>
-      <div class="row"><span>縱搖 Pitch</span><span class="big" id="pitch">—</span></div>
-      <div class="row"><span>狀態</span><span id="attState">—</span></div>
-    </div>
+      <div class="att-read">
+        <div><div class="big num" id="rollVal">—</div><div class="lab">橫搖（左右）</div></div>
+        <div><div class="big num" id="pitchVal">—</div><div class="lab">縱搖（前後）</div></div>
+      </div>
+      <div class="pitchbar" aria-hidden="true"><div id="pitchFill"></div></div>
+    </section>
 
-    <div class="card" id="cGps">
-      <h2>位置 (GPS)</h2>
+    <section class="panel" id="pPos">
+      <h2><svg class="ico"><use href="#i-pin"/></svg>位置<span class="meta" id="gpsTag"></span></h2>
       <div class="big" id="gpsState">—</div>
-      <div class="row"><span>緯度</span><span id="lat">—</span></div>
-      <div class="row"><span>經度</span><span id="lng">—</span></div>
-      <div class="row"><span>衛星數</span><span id="sats">—</span></div>
-      <div class="row"><span>地圖</span><span id="mapLink">—</span></div>
+      <div class="num" id="coords" style="color:var(--muted);font-size:14px">—</div>
+      <div id="map"></div>
+      <div id="mapFallback">地圖需要網路才能載入，座標仍會正常更新。</div>
+      <div id="distance" class="num" style="margin-top:10px;font-size:15px"></div>
+      <div class="rowbtns">
+        <button class="btn" id="btnMe"><svg class="ico"><use href="#i-locate"/></svg>算出離我多遠</button>
+        <button class="btn" id="btnCopy"><svg class="ico"><use href="#i-copy"/></svg>複製座標</button>
+        <a class="btn" id="btnGmap" target="_blank" rel="noopener" href="#" aria-disabled="true">Google 地圖</a>
+      </div>
+    </section>
+
+    <div class="pair span2">
+      <section class="panel" id="pBat">
+        <h2><svg class="ico"><use href="#i-battery"/></svg>船端電池<span class="meta">18650 × 2</span></h2>
+        <div class="big num" id="vbat">—</div>
+        <div class="battery" aria-hidden="true"><div class="shell"><div id="battFill"></div></div><div class="cap"></div></div>
+        <div id="batState" style="font-size:14px;color:var(--muted)">—</div>
+      </section>
+
+      <section class="panel" id="pLink">
+        <h2><svg class="ico"><use href="#i-signal"/></svg>通訊品質<span class="meta">近 10 秒</span></h2>
+        <div style="display:flex;align-items:center;gap:12px"><span class="bars" id="bars" data-q=""><i></i><i></i><i></i><i></i></span><span class="big" id="quality">—</span></div>
+        <dl class="kv">
+          <dt>丟包率</dt><dd class="num" id="loss">—</dd>
+          <dt>最後收到</dt><dd class="num" id="rxAge">—</dd>
+        </dl>
+        <details class="more"><summary>詳細數據</summary>
+          <dl class="kv">
+            <dt>訊號強度 船→岸</dt><dd class="num" id="rssiUp">—</dd>
+            <dt>訊號強度 岸→船</dt><dd class="num" id="rssiDown">—</dd>
+            <dt>船端送出失敗率</dt><dd class="num" id="txFail">—</dd>
+            <dt>頻道（船／岸）</dt><dd class="num" id="chan">—</dd>
+            <dt>藍牙更新間隔</dt><dd class="num" id="rtt">—</dd>
+            <dt>收到／遺失／格式錯誤</dt><dd class="num" id="totals">—</dd>
+          </dl>
+        </details>
+      </section>
     </div>
 
-    <div class="card" id="cBat">
-      <h2>船端電池</h2>
-      <div class="big" id="vbat">—</div>
-      <div class="batt"><div id="battBar"></div></div>
-      <div class="row"><span>狀態</span><span id="batState">—</span></div>
-    </div>
-
-    <div class="card" id="cLink">
-      <h2>通訊品質（近 10 秒）</h2>
-      <div class="big" id="quality">—</div>
-      <div class="row"><span>丟包率</span><span id="loss">—</span></div>
-      <div class="row"><span>訊號強度 船→岸</span><span id="rssiUp">—</span></div>
-      <div class="row"><span>訊號強度 岸→船</span><span id="rssiDown">—</span></div>
-      <div class="row"><span>船端送出失敗率</span><span id="txFail">—</span></div>
-      <div class="row"><span>頻道（船端／岸上）</span><span id="chan">—</span></div>
-      <div class="row"><span>最後收到封包</span><span id="rxAge">—</span></div>
-      <div class="row"><span>藍牙更新間隔</span><span id="rtt">—</span></div>
-      <div class="row"><span>累計 收到／遺失／格式錯誤</span><span id="totals">—</span></div>
-    </div>
-
-    <div class="card wide">
-      <h2>傾斜曲線（近 3 分鐘，虛線：25° 提示、45° 翻覆）</h2>
+    <section class="panel span2">
+      <h2><svg class="ico"><use href="#i-chart"/></svg>傾斜曲線<span class="meta">近 3 分鐘</span></h2>
+      <div class="legend"><span><i style="background:var(--roll)"></i>橫搖</span><span><i style="background:var(--pitch)"></i>縱搖</span><span><i style="background:var(--warn)"></i>25° 提示</span><span><i style="background:var(--bad)"></i>45° 翻覆</span></div>
       <canvas id="chart"></canvas>
-    </div>
+    </section>
 
-    <div class="card wide">
+    <section class="panel span2">
+      <h2><svg class="ico"><use href="#i-list"/></svg>事件紀錄</h2>
       <div class="toolbar">
-        <h2 style="margin:0">事件紀錄</h2>
-        <div class="btns">
-          <label><input type="checkbox" id="showTrack"> 顯示航跡點</label>
-          <button id="btnCsv">匯出 CSV</button>
+        <div class="chips" role="group" aria-label="篩選事件">
+          <button class="chip" data-filter="all" aria-pressed="true">全部</button>
+          <button class="chip" data-filter="alarm" aria-pressed="false">警報</button>
+          <button class="chip" data-filter="track" aria-pressed="false">航跡</button>
         </div>
+        <button class="btn" id="btnCsv"><svg class="ico"><use href="#i-download"/></svg>匯出 CSV</button>
       </div>
-      <div id="evWrap">
-        <table><thead><tr><th>時間</th><th>事件</th><th>位置</th></tr></thead><tbody id="evBody"></tbody></table>
-      </div>
-    </div>
+      <div id="evWrap"><div id="evList"></div></div>
+    </section>
 
-    <div class="card wide">
-      <details>
-        <summary>測試模式（只在岸上模擬，不會送到船端；5 分鐘自動結束）</summary>
-        <div class="btns" style="margin-top:10px">
-          <button data-test="sos">模擬 SOS</button>
-          <button data-test="tilt">模擬翻覆</button>
-          <button data-test="flood">模擬進水</button>
-          <button data-test="normal">清除模擬</button>
-          <button data-test="reset">結束測試模式</button>
-          <button id="btnPin">設定指令密碼</button>
-        </div>
-      </details>
-    </div>
+    <section class="panel span2">
+      <h2><svg class="ico"><use href="#i-sliders"/></svg>設定</h2>
+      <div class="set"><div><div>外觀</div><div class="desc">白天在戶外用淺色比較清楚</div></div>
+        <div class="seg" role="group" aria-label="外觀">
+          <button data-theme-btn="auto">自動</button><button data-theme-btn="light">淺色</button><button data-theme-btn="dark">深色</button>
+        </div></div>
+      <div class="set"><div><div>螢幕保持常亮</div><div class="desc">盯著看的時候螢幕不會自己關掉</div></div>
+        <input type="checkbox" class="switch" id="wakeSwitch" aria-label="螢幕保持常亮"></div>
+      <div class="set"><div><div>指令密碼</div><div class="desc">岸上站有設定密碼時才需要</div></div>
+        <button class="btn" id="btnPin">設定密碼</button></div>
+      <div class="set" style="display:block"><div>測試模式</div><div class="desc" style="margin-bottom:10px">只在岸上模擬，不會送到船端；5 分鐘後自動結束</div>
+        <div class="testbtns">
+          <button class="btn" data-test="sos">模擬 SOS</button>
+          <button class="btn" data-test="tilt">模擬翻覆</button>
+          <button class="btn" data-test="flood">模擬進水</button>
+          <button class="btn" data-test="normal">清除模擬</button>
+          <button class="btn" data-test="reset">結束測試</button>
+        </div></div>
+    </section>
   </div>
 </main>
+<div id="toast" role="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
 <script>
 const BATTERY_CELLS = 2;   // 18650 × 2 串聯（要跟船端韌體的 BATTERY_CELLS 一致）
 // 1 顆鋰電池的「電壓 → 剩餘電量」對照（靜置時的大約值，船在用電時電壓會略低；低電量判定以船端韌體為準）
@@ -166,11 +338,13 @@ const CHART_SEC = 180;
 const $ = id => document.getElementById(id);
 
 let last = null, lastOkAt = 0, gsOnline = null;
-let lastEventId = 0, serverUptimeAt = null;   // {up: 伺服器開機秒數, at: 瀏覽器時間}
-let events = [];                              // 伺服器 + 網頁本身的事件
+let lastEventId = 0, serverUptimeAt = null;   // {up: 岸上站開機秒數, at: 瀏覽器時間}
+let events = [];                              // 岸上站 + 網頁本身的事件
 let muted = false, mutedMask = 0, audioCtx = null, beepTimer = null;
 const hist = [];                              // [t, roll, pitch]
 
+function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 function fmtTime(ms) {
   const d = new Date(ms), p = n => String(n).padStart(2, '0');
   return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
@@ -186,12 +360,21 @@ function alarmNames(d) {
   if (d.sos) a.push('SOS 求救'); if (d.capsized) a.push('翻覆'); if (d.flooded) a.push('進水');
   return a;
 }
-// 伺服器事件的真實時間：有 NTP 用 epoch，否則用「岸上站開機秒數」換算成瀏覽器時間
+// 岸上站事件的真實時間：用「岸上站開機秒數」換算成手機時間
 function eventMs(e) {
   if (e.ms) return e.ms;
   if (e.epoch) return e.epoch * 1000;
   if (serverUptimeAt) return serverUptimeAt.at - (serverUptimeAt.up - e.up) * 1000;
   return Date.now();
+}
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+function setConn(state, name) {
+  const b = $('btnConnect'); b.dataset.state = state;
+  $('connText').textContent = { idle: '連線藍牙', connecting: '連線中…', connected: (name || 'BoatCtrl') + ' 已連線',
+    failed: '連線失敗，再試一次', disconnected: '已斷線，重新連線' }[state] || '連線藍牙';
 }
 
 // ================= 藍牙 (Web Bluetooth) =================
@@ -271,7 +454,7 @@ async function bleConnect() {
       bleDevice.addEventListener('gattserverdisconnected', onBleDisconnected);
     }
     wantConnected = true;
-    setPill($('pGs'), '藍牙：連線中…', 'warn');
+    setConn('connecting');
     const server = await bleDevice.gatt.connect();
     const svc = await server.getPrimaryService(SVC_UUID);
     chStatus = await svc.getCharacteristic(STATUS_UUID);
@@ -281,13 +464,12 @@ async function bleConnect() {
     chStatus.addEventListener('characteristicvaluechanged', e => handleStatusValue(e.target.value));
     await gatt(() => chStatus.startNotifications());
     await handleStatusValue(await gatt(() => chStatus.readValue()));
-    $('btnConnect').textContent = '藍牙已連線（' + (bleDevice.name || '岸上站') + '）';
-    $('btnConnect').disabled = true;
+    setConn('connected', bleDevice.name);
   } catch (e) {
     if (e.name === 'NotFoundError') return;   // 使用者取消選擇
     console.warn(e);
     if (bleDevice && wantConnected) scheduleReconnect();
-    else setPill($('pGs'), '藍牙：連線失敗', 'bad');
+    else setConn('failed');
   }
 }
 
@@ -296,8 +478,7 @@ function onBleDisconnected() {
   if (gsOnline) addLocalEvent('藍牙斷線', true);
   gsOnline = false;
   lastNotifyAt = 0;
-  $('btnConnect').disabled = false;
-  $('btnConnect').textContent = '重新連線藍牙';
+  setConn('disconnected');
   render(last, true);
   if (wantConnected) scheduleReconnect();
 }
@@ -396,12 +577,13 @@ function eventText(type, arg) {
 
 function showUnsupported() {
   const off = $('offline');
-  off.style.display = 'block';
-  off.textContent = '⚠️ 這個瀏覽器不支援網頁藍牙。Android／電腦請用 Chrome 或 Edge；iPhone 請安裝「Bluefy」瀏覽器再開這個網頁。';
+  off.style.display = 'flex';
+  $('offlineText').textContent = '這個瀏覽器不支援網頁藍牙。Android／電腦請用 Chrome 或 Edge；iPhone 請安裝「Bluefy」瀏覽器再開這個網頁。';
 }
 
+
 function addLocalEvent(text, alarm) {
-  events.push({ ms: Date.now(), text: '［網頁］' + text, alarm, local: true });
+  events.push({ ms: Date.now(), text, alarm, local: true });
   renderEvents();
 }
 
@@ -410,156 +592,238 @@ function pushHist(d) {
   if (!d.disconnected && d.haveData) hist.push([now, d.roll, d.pitch]);
   while (hist.length && hist[0][0] < now - CHART_SEC * 1000) hist.shift();
   drawChart();
+  updateMap(d);
 }
 
-function setPill(el, text, cls) { el.textContent = text; el.className = 'pill ' + (cls || ''); }
+// ================= 傾斜儀 =================
+// 角度從正上方起算：0° = 船身正，±25° 提示，±45° 翻覆
+function gaugePt(deg, r) { const a = deg * Math.PI / 180; return [r * Math.sin(a), -r * Math.cos(a)]; }
+function buildGauge() {
+  const arc = (a1, a2, r) => { const [x1, y1] = gaugePt(a1, r), [x2, y2] = gaugePt(a2, r); return `M${x1.toFixed(1)} ${y1.toFixed(1)}A${r} ${r} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)}`; };
+  const zones = [[-90, -45, 'bad'], [-45, -25, 'warn'], [-25, 25, 'ok'], [25, 45, 'warn'], [45, 90, 'bad']];
+  $('zones').innerHTML = zones.map(([a, b, c]) => `<path class="zone" d="${arc(a, b, 96)}" style="stroke:var(--${c});opacity:.85"/>`).join('');
+  let t = '';
+  for (let a = -90; a <= 90; a += 15) {
+    const [x1, y1] = gaugePt(a, 80), [x2, y2] = gaugePt(a, 86);
+    t += `<line class="tick" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+  }
+  for (const a of [-90, -45, -25, 0, 25, 45, 90]) {
+    const [x, y] = gaugePt(a, 68);
+    t += `<text class="tickl" x="${x.toFixed(1)}" y="${(Math.abs(a) === 90 ? -4 : y + 3).toFixed(1)}">${Math.abs(a)}°</text>`;
+  }
+  $('ticks').innerHTML = t;
+}
+function setGauge(roll, pitch) {
+  const r = Math.max(-90, Math.min(90, roll || 0));
+  $('needle').style.transform = `rotate(${r}deg)`;
+  $('hullG').style.transform = `rotate(${r}deg)`;
+  const f = Math.max(-45, Math.min(45, pitch || 0)) / 45 * 50, pf = $('pitchFill');
+  pf.style.left = (f >= 0 ? 50 : 50 + f) + '%';
+  pf.style.width = Math.abs(f) + '%';
+}
+
+// ================= 地圖 =================
+let map = null, boatMarker = null, trackLine = null, meMarker = null, me = null;
+let track = [];
+try { track = JSON.parse(load('boatTrack')) || []; } catch (e) { track = []; }
+function initMap() {
+  if (!window.L) { $('map').style.display = 'none'; $('mapFallback').style.display = 'grid'; return; }
+  map = L.map('map', { attributionControl: true }).setView(track.length ? track[track.length - 1] : [23.7, 121], track.length ? 14 : 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+  trackLine = L.polyline(track.map(p => [p[0], p[1]]), { color: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), weight: 3, opacity: .75 }).addTo(map);
+  if (last) updateMap(last);
+}
+function updateMap(d) {
+  if (!d || d.lat === null || d.lat === undefined) return;
+  const p = [d.lat, d.lng], prev = track[track.length - 1];
+  // 移動超過 10 公尺或過了 30 秒才記一個航跡點
+  if (!prev || distM(prev, p) > 10 || Date.now() - (prev[2] || 0) > 30000) {
+    track.push([d.lat, d.lng, Date.now()]);
+    if (track.length > 1000) track = track.slice(-1000);
+    store('boatTrack', JSON.stringify(track));
+    if (trackLine) trackLine.addLatLng(p);
+  }
+  updateDistance();
+  if (!map) return;
+  const html = `<div class="boatpin${alarmMask(d) ? ' alarm' : ''}"></div>`;
+  if (!boatMarker) {
+    boatMarker = L.marker(p, { icon: L.divIcon({ className: '', html, iconSize: [22, 22], iconAnchor: [11, 11] }), title: '漁船' }).addTo(map);
+    map.setView(p, 15);
+  } else {
+    boatMarker.setLatLng(p);
+    boatMarker.setIcon(L.divIcon({ className: '', html, iconSize: [22, 22], iconAnchor: [11, 11] }));
+  }
+}
+function distM(a, b) {
+  const R = 6371000, rad = x => x * Math.PI / 180;
+  const dLat = rad(b[0] - a[0]), dLng = rad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function bearing(a, b) {
+  const rad = x => x * Math.PI / 180, y = Math.sin(rad(b[1] - a[1])) * Math.cos(rad(b[0]));
+  const x = Math.cos(rad(a[0])) * Math.sin(rad(b[0])) - Math.sin(rad(a[0])) * Math.cos(rad(b[0])) * Math.cos(rad(b[1] - a[1]));
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+function updateDistance() {
+  if (!me || !last || last.lat === null || last.lat === undefined) return;
+  const m = distM(me, [last.lat, last.lng]), b = bearing(me, [last.lat, last.lng]);
+  const dir = ['北', '東北', '東', '東南', '南', '西南', '西', '西北'][Math.round(b / 45) % 8];
+  $('distance').textContent = `船在你的${dir}方 ${m < 1000 ? Math.round(m) + ' 公尺' : (m / 1000).toFixed(2) + ' 公里'}（方位 ${Math.round(b)}°）`;
+}
+
+// ================= 畫面更新 =================
+function setHero(cls, icon, title, sub) {
+  $('hero').className = cls;
+  $('heroUse').setAttribute('href', '#i-' + icon);
+  $('heroTitle').textContent = title;
+  $('heroSub').textContent = sub;
+}
+function setTag(el, text, cls) { el.textContent = text; el.className = 'tag' + (cls ? ' ' + cls : ''); }
 
 function render(d, offline) {
   const off = $('offline');
   if (offline) {
-    off.style.display = 'block';
-    off.textContent = d
-      ? `⚠️ 藍牙沒有連上岸上站。以下是 ${fmtTime(lastOkAt)} 的最後狀態（${ago((Date.now() - lastOkAt) / 1000)}）。請按「連線藍牙」，手機要在岸上站附近（約 10 公尺內）。`
-      : '⚠️ 藍牙還沒連上岸上站，請按上方「連線藍牙」。';
-    setPill($('pGs'), gsOnline === null ? '藍牙：未連線' : '藍牙：已斷線', 'bad');
+    off.style.display = 'flex';
+    $('offlineText').textContent = d
+      ? `藍牙沒有連上岸上站，下面是 ${fmtTime(lastOkAt)} 的最後狀態（${ago((Date.now() - lastOkAt) / 1000)}）。手機要在岸上站附近（約 10 公尺內）再按右上角連線。`
+      : '藍牙還沒連上岸上站，請按右上角「連線藍牙」。';
   } else {
     off.style.display = 'none';
-    setPill($('pGs'), '藍牙：已連線', 'ok');
   }
-  setPill($('pUpd'), '最後更新：' + (lastOkAt ? fmtTime(lastOkAt).split(' ')[1] : '—'), offline ? 'warn' : '');
-  document.querySelectorAll('.card').forEach(c => c.classList.toggle('stale', offline || !d || d.disconnected));
+  document.querySelectorAll('.panel').forEach(c => c.classList.toggle('stale', offline || !d || d.disconnected));
   if (!d) return;
+  const test = d.testMode ? '［測試模式］' : '';
 
-  // --- 船端連線 ---
-  if (!d.radioOk) setPill($('pBoat'), '船端：岸上 ESP-NOW 啟動失敗', 'bad');
-  else if (!d.haveData) setPill($('pBoat'), '船端：尚未收到資料', 'warn');
-  else if (d.testMode) setPill($('pBoat'), '測試模式', 'warn');
-  else if (d.disconnected) setPill($('pBoat'), '船端：通訊中斷（' + ago(d.rxAgeMs / 1000) + '）', 'bad');
-  else setPill($('pBoat'), '船端：連線中', 'ok');
-
-  // --- 警報 ---
-  const names = alarmNames(d), mask = alarmMask(d), box = $('alarm');
+  // --- 主橫幅 ---
+  const names = alarmNames(d), mask = alarmMask(d);
   if ((mask & ~mutedMask) !== 0) { muted = false; }   // 出現新的警報 → 自動取消靜音
   mutedMask &= mask;
-  if (names.length) {
-    box.className = 'bad';
-    $('alarmTitle').textContent = '🚨 ' + names.join('、');
-    $('alarmSub').textContent = d.resetPending
-      ? `已送出解除指令，等待船端確認（${d.resetAgeS} 秒）…船端確認前警報會持續顯示`
-      : (d.disconnected ? '⚠️ 目前與船端通訊中斷，這是中斷前最後收到的狀態' : '警報已鎖定，只有按下 Reset 才會解除');
-  } else if (!d.haveData && !d.testMode) {
-    box.className = 'grey'; $('alarmTitle').textContent = '等待船端資料…'; $('alarmSub').textContent = '';
-  } else if (d.disconnected) {
-    box.className = 'warn'; $('alarmTitle').textContent = '⚠️ 與船端通訊中斷';
-    $('alarmSub').textContent = '最後一次收到資料：' + ago(d.rxAgeMs / 1000);
-  } else if (d.tilt) {
-    box.className = 'warn'; $('alarmTitle').textContent = '⚠️ 船身傾斜超過 25°'; $('alarmSub').textContent = '提示，不鎖定';
-  } else {
-    box.className = ''; $('alarmTitle').textContent = '✅ 一切正常'; $('alarmSub').textContent = d.resetPending ? '等待船端確認解除…' : '';
-  }
-  $('btnReset').disabled = offline || !names.length;
-  $('btnMute').textContent = muted ? '🔔 取消靜音' : '🔇 靜音';
-  updateSound(names.length > 0 && !offline);
+  if (!d.radioOk) setHero('bad', 'alert', '岸上站無線電故障', 'ESP-NOW 沒有啟動，請重開岸上站。');
+  else if (names.length) {
+    setHero('bad', 'alert', test + names.join('、'),
+      d.resetPending ? `已送出解除指令，等待船端確認（${d.resetAgeS} 秒）。確認前警報會持續顯示。`
+      : d.disconnected ? '目前與船端通訊中斷，這是中斷前最後收到的狀態。'
+      : '警報已鎖定。確認人員安全後按「解除警報」，或在船上長按 SOS 10 秒。');
+  } else if (!d.haveData && !d.testMode) setHero('', 'wait', '等待船端資料', '岸上站已連上，船端開機後約 2 秒內會出現資料。');
+  else if (d.disconnected) setHero('warn', 'unlink', '與船端通訊中斷', '最後一次收到資料：' + ago(d.rxAgeMs / 1000) + '。船可能超出範圍或船端沒電。');
+  else if (d.tilt) setHero('warn', 'tilt', test + '船身傾斜超過 25°', '提示，不會鎖定。超過 45° 持續 1 秒會判定翻覆。');
+  else setHero('ok', 'check', test + '一切正常', d.resetPending ? '等待船端確認解除…' : '船端連線中，資料每 0.25 秒更新。');
+  const alarmOn = names.length > 0;
+  $('btnReset').style.display = $('btnMute').style.display = alarmOn ? '' : 'none';
+  $('btnReset').disabled = offline || d.resetPending;
+  $('btnReset').textContent = d.resetPending ? '等待船端確認…' : '解除警報';
+  $('muteText').textContent = muted ? '取消靜音' : '靜音';
+  $('muteUse').setAttribute('href', muted ? '#i-bell' : '#i-belloff');
+  updateSound(alarmOn && !offline);
 
   // --- 姿態 ---
-  $('roll').textContent = d.haveData || d.testMode ? d.roll.toFixed(1) + '°' : '—';
-  $('pitch').textContent = d.haveData || d.testMode ? d.pitch.toFixed(1) + '°' : '—';
-  $('hull').setAttribute('transform', `rotate(${Math.max(-180, Math.min(180, d.roll || 0))})`);
-  $('attState').textContent = !d.haveData ? '—' : !d.imuOk ? '⚠️ 姿態感測器故障，角度不可信' :
-    d.capsized ? '翻覆' : d.tilt ? '傾斜（> 25°）' : '平穩';
+  const hasAtt = d.haveData || d.testMode;
+  $('rollVal').textContent = hasAtt ? d.roll.toFixed(1) + '°' : '—';
+  $('pitchVal').textContent = hasAtt ? d.pitch.toFixed(1) + '°' : '—';
+  setGauge(hasAtt ? d.roll : 0, hasAtt ? d.pitch : 0);
+  if (!d.haveData) setTag($('attState'), '—');
+  else if (!d.imuOk) setTag($('attState'), '感測器故障', 'bad');
+  else if (d.capsized) setTag($('attState'), '翻覆', 'bad');
+  else if (d.tilt) setTag($('attState'), '傾斜', 'warn');
+  else setTag($('attState'), '平穩', 'ok');
 
-  // --- GPS ---
-  if (!d.haveData) { $('gpsState').textContent = '—'; }
-  else if (d.sats === -1) $('gpsState').textContent = '⚠️ 沒收到 GPS 模組資料';
-  else if (d.lat === null) $('gpsState').textContent = '📡 尚未定位';
-  else if (!d.gpsFix) $('gpsState').textContent = '⚠️ 失去定位（最後位置 ' + ago(d.gpsAge) + '）';
-  else $('gpsState').textContent = '✅ 定位中';
-  $('lat').textContent = d.lat === null || d.lat === undefined ? '—' : d.lat.toFixed(6);
-  $('lng').textContent = d.lng === null || d.lng === undefined ? '—' : d.lng.toFixed(6);
-  $('sats').textContent = d.sats === null || d.sats < 0 ? '—' : d.sats;
-  $('mapLink').innerHTML = d.lat === null || d.lat === undefined ? '—' :
-    `<a target="_blank" rel="noopener" href="https://www.google.com/maps?q=${d.lat},${d.lng}">在地圖開啟</a>`;
+  // --- 位置 ---
+  const hasPos = d.lat !== null && d.lat !== undefined;
+  if (!d.haveData) $('gpsState').textContent = '—';
+  else if (d.sats === -1) $('gpsState').textContent = '沒收到 GPS 模組資料';
+  else if (!hasPos) $('gpsState').textContent = '尚未定位';
+  else if (!d.gpsFix) $('gpsState').textContent = '失去定位';
+  else $('gpsState').textContent = '定位中';
+  setTag($('gpsTag'), d.sats > 0 ? `衛星 ${d.sats} 顆` : (hasPos && !d.gpsFix ? `最後位置 ${ago(d.gpsAge)}` : '—'),
+    hasPos && d.gpsFix ? 'ok' : d.haveData ? 'warn' : '');
+  $('coords').textContent = hasPos ? `${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}` : (d.haveData ? '室內通常收不到衛星，請到戶外空曠處' : '—');
+  $('btnGmap').href = hasPos ? `https://www.google.com/maps?q=${d.lat},${d.lng}` : '#';
+  $('btnGmap').setAttribute('aria-disabled', hasPos ? 'false' : 'true');
+  $('btnCopy').disabled = $('btnShare').disabled = !hasPos;
 
   // --- 電池 ---
-  if (d.vbat === null || d.vbat === undefined) { $('vbat').textContent = '—'; $('battBar').style.width = '0'; $('batState').textContent = '—'; }
+  if (d.vbat === null || d.vbat === undefined) { $('vbat').textContent = '—'; $('battFill').style.width = '0'; $('batState').textContent = '—'; }
   else {
-    const perCell = d.vbat / BATTERY_CELLS;
-    const pct = liionPct(perCell);
+    const perCell = d.vbat / BATTERY_CELLS, pct = liionPct(perCell);
     if (perCell > 4.5) {
-      // 高於鋰電池滿電電壓：分壓比設定錯誤，或量測線接錯位置
-      $('vbat').textContent = d.vbat.toFixed(2) + ' V';
-      $('battBar').style.width = '0';
-      $('batState').textContent = '⚠️ 電壓高於電池滿電，請檢查分壓比設定或量測線接法';
+      $('vbat').textContent = d.vbat.toFixed(1) + ' V';
+      $('battFill').style.width = '0';
+      $('batState').textContent = '電壓高於電池滿電，請檢查分壓比設定或量測線接法';
     } else {
-      $('vbat').textContent = `${d.vbat.toFixed(1)} V（約 ${Math.round(pct)}%）`;
-      $('battBar').style.width = pct + '%';
-      $('battBar').style.background = d.lowBat ? 'var(--bad)' : pct < 30 ? 'var(--warn)' : 'var(--ok)';
-      $('batState').textContent = d.lowBat ? '⚠️ 低電量，請盡快回港或充電' : '正常';
+      $('vbat').textContent = `${Math.round(pct)}%`;
+      $('battFill').style.width = pct + '%';
+      $('battFill').style.background = d.lowBat ? 'var(--bad)' : pct < 30 ? 'var(--warn)' : 'var(--ok)';
+      $('batState').textContent = `${d.vbat.toFixed(1)} V・` + (d.lowBat ? '低電量，請盡快回港或充電' : '正常');
     }
   }
 
-  // --- 通訊品質 ---
-  // 品質以「較弱那一方向的訊號」+ 丟包率判斷：> −70 dBm 良好、−70～−85 普通、< −85 容易斷
+  // --- 通訊品質：較弱那一方向的訊號 + 丟包率 ---
   const has = v => v !== null && v !== undefined;
   const rssiMin = [d.rssiUp, d.rssiDown].filter(has).reduce((a, b) => Math.min(a, b), 0);
-  let q = '—';
-  if (d.haveData && d.disconnected) { q = '斷線'; }
+  let q = '—', qn = '';
+  if (d.haveData && d.disconnected) { q = '斷線'; qn = '0'; }
   else if (has(d.lossPct)) {
-    if (d.lossPct < 5 && (!rssiMin || rssiMin > -70)) q = '良好';
-    else if (d.lossPct < 20 && (!rssiMin || rssiMin > -85)) q = '普通';
-    else q = '差';
+    if (d.lossPct < 5 && (!rssiMin || rssiMin > -70)) { q = '良好'; qn = '3'; }
+    else if (d.lossPct < 20 && (!rssiMin || rssiMin > -85)) { q = '普通'; qn = '1'; }
+    else { q = '差'; qn = '0'; }
   }
   $('quality').textContent = q;
+  $('bars').dataset.q = qn;
   $('loss').textContent = has(d.lossPct) ? d.lossPct.toFixed(1) + ' %' : '—';
   $('rssiUp').textContent = has(d.rssiUp) ? d.rssiUp + ' dBm' : '—';
   $('rssiDown').textContent = has(d.rssiDown) ? d.rssiDown + ' dBm' : '—';
   $('txFail').textContent = has(d.boatTxFail) ? d.boatTxFail + ' %' : '—';
   $('chan').textContent = has(d.boatChannel) ? `${d.boatChannel}／${d.gsChannel}` : (has(d.gsChannel) ? `—／${d.gsChannel}` : '—');
-  $('rxAge').textContent = d.rxAgeMs === null || d.rxAgeMs === undefined ? '—' : (d.rxAgeMs / 1000).toFixed(1) + ' 秒前';
-  $('rtt').textContent = notifyGapMs === null || offline ? '—' : Math.round(notifyGapMs) + ' ms' + (notifyGapMs > 600 ? '（偏慢）' : '');
+  $('rxAge').textContent = has(d.rxAgeMs) ? (d.rxAgeMs < 1000 ? '剛剛' : ago(d.rxAgeMs / 1000)) : '—';
+  $('rtt').textContent = notifyGapMs === null || offline ? '—' : Math.round(notifyGapMs) + ' ms';
   $('totals').textContent = d.rxTotal === undefined ? '—' : `${d.rxTotal}／${d.lostTotal}／${d.badTotal}`;
 }
 
 function drawChart() {
-  const cv = $('chart'), dpr = window.devicePixelRatio || 1;
+  const cv = $('chart'), dpr = window.devicePixelRatio || 1, css = getComputedStyle(document.documentElement);
+  const v = n => css.getPropertyValue(n).trim();
   const w = cv.clientWidth, h = cv.clientHeight;
-  if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  if (!w) return;
+  if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
   const g = cv.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, w, h);
-  const maxA = 90, y = a => h / 2 - (Math.max(-maxA, Math.min(maxA, a)) / maxA) * (h / 2 - 6);
-  const now = Date.now(), x = t => w - (now - t) / (CHART_SEC * 1000) * w;
-  g.font = '11px sans-serif'; g.fillStyle = '#8aa0b4';
-  for (const [a, c] of [[0, '#2a3a4a'], [25, '#f39c12'], [-25, '#f39c12'], [45, '#e74c3c'], [-45, '#e74c3c']]) {
-    g.strokeStyle = c; g.setLineDash(a ? [4, 4] : []); g.beginPath(); g.moveTo(0, y(a)); g.lineTo(w, y(a)); g.stroke();
-    if (a) g.fillText(a + '°', 4, y(a) - 3);
+  const maxA = 60, padL = 30, y = a => h / 2 - (Math.max(-maxA, Math.min(maxA, a)) / maxA) * (h / 2 - 8);
+  const now = Date.now(), x = t => padL + (w - padL) - (now - t) / (CHART_SEC * 1000) * (w - padL);
+  g.font = '11px system-ui,sans-serif'; g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const [a, c, dash] of [[0, v('--chart-grid'), []], [25, v('--warn'), [4, 4]], [-25, v('--warn'), [4, 4]], [45, v('--bad'), [4, 4]], [-45, v('--bad'), [4, 4]]]) {
+    g.strokeStyle = c; g.lineWidth = 1; g.setLineDash(dash); g.beginPath(); g.moveTo(padL, y(a)); g.lineTo(w, y(a)); g.stroke();
+    g.fillStyle = v('--muted'); g.fillText(Math.abs(a) + '°', padL - 6, y(a));
   }
-  g.setLineDash([]);
-  for (const [i, c, name] of [[1, '#3498db', '橫搖'], [2, '#2ecc71', '縱搖']]) {
+  g.setLineDash([]); g.lineJoin = 'round';
+  for (const [i, c] of [[2, v('--pitch')], [1, v('--roll')]]) {
     g.strokeStyle = c; g.lineWidth = 2; g.beginPath();
     let prevT = 0;
     for (const p of hist) { (p[0] - prevT > 3000 ? g.moveTo : g.lineTo).call(g, x(p[0]), y(p[i])); prevT = p[0]; }
-    g.stroke(); g.lineWidth = 1;
-    g.fillStyle = c; g.fillText(name, w - (i === 1 ? 70 : 36), 12);
+    g.stroke();
   }
+  if (!hist.length) { g.fillStyle = v('--muted'); g.textAlign = 'center'; g.fillText('連上船端後會開始畫曲線', (w + padL) / 2, h / 2 - 14); }
 }
 
+// ================= 事件紀錄 =================
+let evFilter = 'all';
 function renderEvents() {
-  const showTrack = $('showTrack').checked;
-  const rows = events.filter(e => showTrack || e.type !== 14).slice(-300).reverse();
-  $('evBody').innerHTML = rows.map(e => {
-    const pos = e.lat !== undefined ? `${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}` : '';
-    return `<tr class="${e.alarm ? 'a' : ''}"><td class="t">${fmtTime(e.ms)}</td><td>${e.text}</td><td>${pos}</td></tr>`;
-  }).join('') || '<tr><td colspan="3" style="color:var(--muted)">尚無事件</td></tr>';
+  const rows = events.filter(e => evFilter === 'track' ? e.type === 14 : evFilter === 'alarm' ? e.alarm : e.type !== 14).slice(-300).reverse();
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  $('evList').innerHTML = rows.map(e => {
+    const pos = e.lat !== undefined ? `<div class="pos num">${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}</div>` : '';
+    return `<div class="ev${e.alarm ? ' alarm' : ''}"><time class="num">${fmtTime(e.ms)}</time><div><span class="txt">${esc(e.text)}</span>${e.local ? '<span class="src">本機</span>' : ''}</div>${pos}</div>`;
+  }).join('') || `<div class="empty">${evFilter === 'alarm' ? '目前沒有警報紀錄。' : evFilter === 'track' ? '船端定位後，每分鐘會記一個航跡點。' : '連上岸上站後，開機、警報、斷線等事件會列在這裡。'}</div>`;
 }
 
 function exportCsv() {
-  const esc = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
+  const csvEsc = s => '"' + String(s ?? '').replace(/"/g, '""') + '"';
   const lines = ['時間,事件,緯度,經度,橫搖,縱搖,電池V'];
   for (const e of [...events].sort((a, b) => a.ms - b.ms)) {
     const d = new Date(e.ms), p = n => String(n).padStart(2, '0');
     const t = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-    lines.push([t, e.text, e.lat ?? '', e.lng ?? '', e.roll ?? '', e.pitch ?? '', e.vbat ?? ''].map(esc).join(','));
+    lines.push([t, e.text, e.lat ?? '', e.lng ?? '', e.roll ?? '', e.pitch ?? '', e.vbat ?? ''].map(csvEsc).join(','));
   }
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
@@ -569,7 +833,7 @@ function exportCsv() {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-// --- 警報聲（瀏覽器規定要先點過畫面才能發聲）---
+// ================= 警報聲（瀏覽器規定要先點過畫面才能發聲）=================
 function ensureAudio() { if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } }
 function beep() {
   if (!audioCtx) return;
@@ -583,7 +847,31 @@ function updateSound(alarm) {
   if (!on && beepTimer) { clearInterval(beepTimer); beepTimer = null; }
 }
 
+// ================= 外觀 / 螢幕常亮 =================
+function applyTheme(t) {
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  document.querySelectorAll('[data-theme-btn]').forEach(b => b.setAttribute('aria-pressed', b.dataset.themeBtn === t));
+  store('theme', t);
+  drawChart();
+}
+let wakeLock = null;
+async function setWake(on) {
+  try {
+    if (on) { wakeLock = await navigator.wakeLock.request('screen'); }
+    else if (wakeLock) { await wakeLock.release(); wakeLock = null; }
+    store('wake', on ? '1' : '0');
+  } catch (e) { $('wakeSwitch').checked = false; toast('這個瀏覽器不支援螢幕常亮'); }
+}
+
+// ================= 按鈕 =================
+function posText() {
+  const d = last;
+  return `漁船位置 ${d.lat.toFixed(6)}, ${d.lng.toFixed(6)}\nhttps://www.google.com/maps?q=${d.lat},${d.lng}\n` +
+    (alarmNames(d).length ? `警報：${alarmNames(d).join('、')}\n` : '') + `時間：${fmtTime(lastOkAt)}`;
+}
 document.addEventListener('click', ensureAudio, { once: true });
+$('btnConnect').onclick = () => { ensureAudio(); if ($('btnConnect').dataset.state !== 'connected') bleConnect(); };
 $('btnMute').onclick = () => {
   muted = !muted;
   mutedMask = muted && last ? alarmMask(last) : 0;
@@ -594,25 +882,66 @@ $('btnReset').onclick = async () => {
   if (!last || !confirm('確定要解除「' + alarmNames(last).join('、') + '」警報嗎？\n請先確認船上人員安全。')) return;
   try {
     await sendCmd(CMD.RESET);
-    addLocalEvent('已送出 Reset，等待船端確認', false);
-  } catch (e) { alert('送出失敗：藍牙沒有連上岸上站'); }
+    addLocalEvent('已送出解除指令，等待船端確認', false);
+  } catch (e) { toast('送出失敗：藍牙沒有連上岸上站'); }
+};
+$('btnShare').onclick = async () => {
+  if (!last || last.lat === null) return;
+  try {
+    if (navigator.share) await navigator.share({ title: '漁船位置', text: posText() });
+    else { await navigator.clipboard.writeText(posText()); toast('已複製位置，可以貼到 LINE'); }
+  } catch (e) {}
+};
+$('btnCopy').onclick = async () => {
+  if (!last || last.lat === null) return;
+  try { await navigator.clipboard.writeText(`${last.lat.toFixed(6)}, ${last.lng.toFixed(6)}`); toast('已複製座標'); }
+  catch (e) { toast('無法複製，請長按座標手動複製'); }
+};
+$('btnGmap').onclick = e => { if ($('btnGmap').getAttribute('aria-disabled') === 'true') e.preventDefault(); };
+$('btnMe').onclick = () => {
+  if (!navigator.geolocation) { toast('這個瀏覽器不能取得你的位置'); return; }
+  $('distance').textContent = '取得你的位置中…';
+  navigator.geolocation.watchPosition(p => {
+    me = [p.coords.latitude, p.coords.longitude];
+    if (map) {
+      const html = '<div class="mepin"></div>';
+      if (!meMarker) meMarker = L.marker(me, { icon: L.divIcon({ className: '', html, iconSize: [16, 16], iconAnchor: [8, 8] }), title: '你的位置' }).addTo(map);
+      else meMarker.setLatLng(me);
+    }
+    if (last && last.lat !== null && last.lat !== undefined) updateDistance();
+    else $('distance').textContent = '已取得你的位置，船端定位後會顯示距離。';
+  }, () => { $('distance').textContent = '無法取得你的位置，請允許瀏覽器使用定位。'; }, { enableHighAccuracy: true });
 };
 document.querySelectorAll('[data-test]').forEach(b => b.onclick = async () => {
-  try { await sendCmd(CMD[b.dataset.test]); } catch (e) { alert('送出失敗：藍牙沒有連上岸上站'); }
+  try { await sendCmd(CMD[b.dataset.test]); toast('已送出'); } catch (e) { toast('送出失敗：藍牙沒有連上岸上站'); }
 });
-$('btnConnect').onclick = () => { ensureAudio(); bleConnect(); };
+document.querySelectorAll('.chip').forEach(c => c.onclick = () => {
+  evFilter = c.dataset.filter;
+  document.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', x === c));
+  renderEvents();
+});
+document.querySelectorAll('[data-theme-btn]').forEach(b => b.onclick = () => applyTheme(b.dataset.themeBtn));
+$('wakeSwitch').onchange = e => setWake(e.target.checked);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && $('wakeSwitch').checked) setWake(true); });
 $('btnPin').onclick = () => askPin();
 $('btnCsv').onclick = exportCsv;
-$('showTrack').onchange = renderEvents;
 window.addEventListener('resize', drawChart);
+if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawChart);
 
+// ================= 啟動 =================
+buildGauge();
+applyTheme(load('theme') || 'auto');
+if (!('wakeLock' in navigator)) { $('wakeSwitch').disabled = true; }
+else if (load('wake') === '1') { $('wakeSwitch').checked = true; setWake(true); }
 // 打開網頁時先顯示上次的快取（離線也看得到最後狀態）
 try {
-  const c = JSON.parse(localStorage.getItem('boatLast'));
+  const c = JSON.parse(load('boatLast'));
   if (c) { last = c.d; lastOkAt = c.at; render(last, true); }
 } catch (e) {}
 renderEvents();
+drawChart();
 if (!navigator.bluetooth) showUnsupported();
+window.addEventListener('load', initMap);
 setInterval(pollEvents, 10000);
 // 斷線時每秒更新「N 秒前」
 setInterval(() => { if (gsOnline !== true && last) render(last, true); }, 1000);
