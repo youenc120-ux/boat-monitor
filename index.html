@@ -266,6 +266,10 @@ canvas{width:100%;height:190px;display:block}
           <dt>丟包率</dt><dd class="num" id="loss">—</dd>
           <dt>最後收到</dt><dd class="num" id="rxAge">—</dd>
         </dl>
+        <div class="set" style="border:0;padding:8px 0 0"><div><div>發射功率</div><div class="desc" id="paState">—</div></div>
+          <div class="seg" role="group" aria-label="發射功率">
+            <button data-pa="low" aria-pressed="false">低</button><button data-pa="high" aria-pressed="false">高</button>
+          </div></div>
         <details class="more"><summary>詳細數據</summary>
           <dl class="kv">
             <dt>訊號強度 船→岸</dt><dd class="num" id="rssiUp">—</dd>
@@ -383,7 +387,7 @@ const SVC_UUID    = '6e7b0001-5a1e-4c2b-9b8a-b0a7c0de0001';
 const STATUS_UUID = '6e7b0002-5a1e-4c2b-9b8a-b0a7c0de0001';
 const CMD_UUID    = '6e7b0003-5a1e-4c2b-9b8a-b0a7c0de0001';
 const EVENTS_UUID = '6e7b0004-5a1e-4c2b-9b8a-b0a7c0de0001';
-const CMD = { RESET: 1, MUTE_ON: 2, MUTE_OFF: 3, sos: 10, tilt: 11, flood: 12, normal: 13, reset: 14, EVENTS: 0x20 };
+const CMD = { RESET: 1, MUTE_ON: 2, MUTE_OFF: 3, PA_LOW: 4, PA_HIGH: 5, sos: 10, tilt: 11, flood: 12, normal: 13, reset: 14, EVENTS: 0x20 };
 const STATUS_SIZE = 54, EVENT_SIZE = 25;
 
 let bleDevice = null, chStatus = null, chCmd = null, chEvents = null;
@@ -409,6 +413,9 @@ function parseStatus(dv) {
   const sats = u8(), gpsAge = u8(), seq = u16(), rxAge = u32(), loss10 = i16();
   const rssiUp = i8(), rssiDown = i8(), txFail = u8(), boatCh = u8(), gsCh = u8();
   const rxTotal = u32(), lostTotal = u32(), badTotal = u32(), resetAgeS = u16(), uptimeS = u32(), lastEv = u32();
+  // 發射功率（新版岸上站才有，舊版沒有這 3 bytes）
+  const hasPa = dv.byteLength >= o + 3;
+  const paWant = hasPa ? u8() : null, paGs = hasPa ? u8() : null, paBoatRaw = hasPa ? u8() : null;
   const have = !!(g & 1), gpsEver = have && gpsAge !== 255;
   return {
     ver, haveData: have, disconnected: !!(g & 2), resetPending: !!(g & 4), testMode: !!(g & 8), radioOk: !!(g & 16),
@@ -420,7 +427,8 @@ function parseStatus(dv) {
     rxAgeMs: rxAge === 0xFFFFFFFF ? null : rxAge, lossPct: loss10 < 0 ? null : loss10 / 10,
     rssiUp: rssiUp || null, rssiDown: rssiDown || null, boatTxFail: have ? txFail : null,
     boatChannel: have ? boatCh : null, gsChannel: gsCh,
-    rxTotal, lostTotal, badTotal, resetAgeS, uptimeS, epoch: 0, lastEventId: lastEv
+    rxTotal, lostTotal, badTotal, resetAgeS, uptimeS, epoch: 0, lastEventId: lastEv,
+    paWant, paGs, paBoat: paBoatRaw ? (paBoatRaw & 3) : null, paFellBack: !!(paBoatRaw & 0x80)
   };
 }
 
@@ -571,6 +579,7 @@ function eventText(type, arg) {
     case 15: return '進入測試模式';
     case 16: return '結束測試模式';
     case 17: return '船上長按 SOS 手動解除（' + alarmMaskText(arg) + '）';
+    case 18: return (arg & 0x80) ? '高功率連不上，船端自動退回低功率' : '船端發射功率改為' + paText(arg & 3);
   }
   return '未知事件';
 }
@@ -778,6 +787,24 @@ function render(d, offline) {
   $('rxAge').textContent = has(d.rxAgeMs) ? (d.rxAgeMs < 1000 ? '剛剛' : ago(d.rxAgeMs / 1000)) : '—';
   $('rtt').textContent = notifyGapMs === null || offline ? '—' : Math.round(notifyGapMs) + ' ms';
   $('totals').textContent = d.rxTotal === undefined ? '—' : `${d.rxTotal}／${d.lostTotal}／${d.badTotal}`;
+  renderPa(d, offline);
+}
+
+const PA_LOW = 1, PA_HIGH = 2;
+function paText(lv) { return lv === PA_HIGH ? '高' : lv === PA_LOW ? '低' : '—'; }
+function renderPa(d, offline) {
+  const known = d.paWant !== null && d.paWant !== undefined;
+  document.querySelectorAll('[data-pa]').forEach(b => {
+    const lv = b.dataset.pa === 'high' ? PA_HIGH : PA_LOW;
+    b.setAttribute('aria-pressed', known && d.paWant === lv);
+    b.disabled = !known || offline;
+  });
+  let t;
+  if (!known) t = '岸上站韌體太舊，不支援切換';
+  else if (d.paFellBack) t = '高功率連不上，已自動退回低功率（檢查 nRF24 的 3.3V 供電）';
+  else if (d.paBoat !== null && d.paBoat !== d.paWant) t = `切換中…（船 ${paText(d.paBoat)}／岸 ${paText(d.paGs)}）`;
+  else t = `船 ${paText(d.paBoat)}／岸 ${paText(d.paGs)}` + (d.paWant === PA_HIGH ? '，10 秒沒通會自動退回低功率' : '');
+  $('paState').textContent = t;
 }
 
 function drawChart() {
@@ -912,6 +939,13 @@ $('btnMe').onclick = () => {
     else $('distance').textContent = '已取得你的位置，船端定位後會顯示距離。';
   }, () => { $('distance').textContent = '無法取得你的位置，請允許瀏覽器使用定位。'; }, { enableHighAccuracy: true });
 };
+document.querySelectorAll('[data-pa]').forEach(b => b.onclick = async () => {
+  const high = b.dataset.pa === 'high';
+  try {
+    await sendCmd(high ? CMD.PA_HIGH : CMD.PA_LOW);
+    toast(high ? '已要求高功率；10 秒內沒通會自動退回低功率' : '已要求低功率');
+  } catch (e) { toast('送出失敗：藍牙沒有連上岸上站'); }
+});
 document.querySelectorAll('[data-test]').forEach(b => b.onclick = async () => {
   try { await sendCmd(CMD[b.dataset.test]); toast('已送出'); } catch (e) { toast('送出失敗：藍牙沒有連上岸上站'); }
 });
